@@ -1,0 +1,107 @@
+---
+title: "Improving WordPress Playground documentation"
+description: "Learn where the WordPress Playground docs live, how to run the site locally, and how to submit documentation improvements via a GitHub pull request."
+---
+
+The WordPress Playground documentation site is maintained by volunteers, and contributions of all sizes are welcome — from fixing a typo to writing an entirely new guide. You do not need to be a developer to contribute: if you can describe what is missing or confusing, that is already valuable.
+
+All open documentation tasks are tracked in the [WordPress/wordpress-playground](https://github.com/WordPress/wordpress-playground) repository under the labels [`[Type] Documentation`](https://github.com/WordPress/wordpress-playground/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22%5BType%5D%20Documentation%22) and [`[Type] Developer Documentation`](https://github.com/WordPress/wordpress-playground/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22%5BType%5D%20Developer%20Documentation%22).
+
+## Where the docs live
+
+Documentation source files are Markdown (`.md`) files stored in the repository under:
+
+```
+packages/docs/site/docs/
+├── main/          # General Playground docs (contributing, architecture, etc.)
+├── blueprints/    # Blueprint reference and guides
+└── developers/    # Developer API and integration docs
+```
+
+Translations live alongside the English source in `packages/docs/site/i18n/`.
+
+The documentation site is built with **Docusaurus** and the API reference is generated with TypeDoc from package source files.
+
+## Ways to contribute
+
+### Edit in the browser (no setup required)
+
+If you have a GitHub account, you can edit files directly in the GitHub UI without cloning anything:
+
+<Steps>
+  <Step title="Find the file to edit">
+    Navigate to the file you want to change in the [docs directory on GitHub](https://github.com/WordPress/wordpress-playground/tree/trunk/packages/docs/site/docs). To add a new page, navigate to the correct chapter directory.
+  </Step>
+  <Step title="Open the editor">
+    Click an existing file and then the pencil icon to edit it, or click **Add Files** to create a new one. GitHub will prompt you to fork the repository and create a branch.
+  </Step>
+  <Step title="Make your changes">
+    Edit the Markdown in the browser editor. Use standard Markdown formatting.
+  </Step>
+  <Step title="Submit a pull request">
+    Click **Commit Changes**, add a short description of your change, and submit a pull request.
+  </Step>
+</Steps>
+
+<Note>
+  Browser editing does not give you a live preview. If you want to see how your
+  changes render before submitting, run the docs site locally (see below).
+</Note>
+
+### Open an issue instead
+
+If writing the content yourself feels like too much, [open an issue](https://github.com/WordPress/wordpress-playground/issues/new) describing what you would like to add or change. You can even paste draft content in the issue description and a contributor will help finish it.
+
+## Running the docs site locally
+
+To preview changes before submitting a pull request, run the docs site on your machine.
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone -b trunk --single-branch --depth 1 --recurse-submodules \
+      https://github.com/WordPress/wordpress-playground.git
+    cd wordpress-playground
+    ```
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+  <Step title="Build the docs assets">
+    ```bash
+    npm run build:docs
+    ```
+  </Step>
+  <Step title="Start the local preview server">
+    ```bash
+    npm run dev:docs
+    ```
+
+    The documentation site opens in a new browser tab and refreshes automatically as you edit files.
+  </Step>
+</Steps>
+
+## Guidelines for writing docs
+
+- **Use second person** — address the reader as "you".
+- **Active voice** — prefer "Run the command" over "The command should be run".
+- **Keep sentences short** — aim for one idea per sentence.
+- **Code blocks need language tags** — always specify the language (` ```bash `, ` ```json `, etc.).
+- **Link liberally** — if a concept is explained elsewhere in the docs, link to it rather than restating it.
+- **Translations** — if you want to contribute translated docs, check the [contributing overview](/contributing/overview) for guidance on joining the translation effort.
+
+## Submitting your changes
+
+The pull request workflow for documentation is the same as for code. The git workflow follows the standard WordPress contributor process described in the [Gutenberg contributor guide](https://developer.wordpress.org/block-editor/contributors/code/git-workflow/).
+
+1. Make your changes on a branch.
+2. Open a pull request against `trunk` in the [wordpress-playground repository](https://github.com/WordPress/wordpress-playground).
+3. Describe what you changed and why in the PR description.
+
+<Tip>
+  If you are unsure whether a proposed change is appropriate, open an issue or
+  start a [GitHub discussion](https://github.com/WordPress/wordpress-playground/discussions)
+  first. Maintainers are happy to give feedback before you write anything.
+</Tip>

@@ -1,0 +1,385 @@
+---
+title: "End-to-end testing WordPress plugins with Playwright"
+description: "Write reliable E2E tests for WordPress plugins and themes using Playwright and the Playground CLI — no Docker or database setup required."
+---
+
+End-to-end testing verifies that your WordPress plugin or theme works correctly from a user's perspective: clicking buttons, filling forms, and navigating pages in a real browser. By combining [Playwright](https://playwright.dev/) with `@wp-playground/cli`, you can spin up a fresh WordPress instance as a test fixture, run your tests against it, and tear it down — all without Docker, a database, or any manual setup.
+
+## Prerequisites
+
+- Node.js 20 or later
+- A WordPress plugin or theme to test
+- Familiarity with basic Playwright concepts
+
+<Info>
+  This guide focuses on the Playwright integration. For an introduction to running your plugin or theme locally with Playground, see the [plugin developers guide](/guides/plugin-developers) or the [theme developers guide](/guides/theme-developers).
+</Info>
+
+## Project setup
+
+<Steps>
+  <Step title="Install dependencies">
+    From your plugin or theme root directory, install Playwright and the Playground CLI:
+
+    ```bash
+    npm init -y
+    npm install --save-dev @playwright/test @wp-playground/cli
+    npx playwright install chromium
+    ```
+
+    This installs Playwright as the test runner, the Playground CLI for creating WordPress instances, and the Chromium browser for test execution.
+  </Step>
+
+  <Step title="Configure Playwright">
+    Create a `playwright.config.ts` file in your project root:
+
+    ```typescript
+    import { defineConfig } from '@playwright/test';
+
+    export default defineConfig({
+      testDir: './tests/e2e',
+      fullyParallel: false,
+      forbidOnly: !!process.env.CI,
+      retries: process.env.CI ? 2 : 0,
+      workers: 1,
+      reporter: 'html',
+      timeout: 120_000,
+      expect: {
+        timeout: 30_000,
+      },
+      use: {
+        screenshot: 'only-on-failure',
+        trace: 'on-first-retry',
+      },
+    });
+    ```
+
+    WordPress Playground needs more time to start than a typical web app. The 120-second test timeout and 30-second assertion timeout account for WordPress boot time and page loads. Setting `workers: 1` prevents port conflicts when multiple tests share a Playground server.
+
+    <Tip>
+      By default, Playground serves on port `9400`. To use a different port, pass `port: 9500` in the `runCLI` options and add `baseURL: "http://localhost:9500"` to the `use` section above.
+    </Tip>
+  </Step>
+
+  <Step title="Write your first test">
+    Create `tests/e2e/plugin.spec.ts`:
+
+    ```typescript
+    import { test, expect } from '@playwright/test';
+    import { runCLI } from '@wp-playground/cli';
+
+    let cli: Awaited<ReturnType<typeof runCLI>>;
+
+    test.beforeAll(async () => {
+      cli = await runCLI({
+        command: 'server',
+        blueprint: {
+          preferredVersions: { php: '8.3', wp: 'latest' },
+          login: true,
+        },
+      });
+    });
+
+    test.afterAll(async () => {
+      await cli?.server?.close();
+    });
+
+    test('WordPress dashboard loads', async ({ page }) => {
+      await page.goto(`${cli.serverUrl}/wp-admin/`);
+      // WordPress core admin elements lack ARIA roles — CSS selectors are acceptable here
+      await expect(page.locator('#wpbody-content')).toBeVisible();
+      await expect(page).toHaveTitle(/Dashboard/);
+    });
+    ```
+
+    Run the test:
+
+    ```bash
+    npx playwright test
+    ```
+  </Step>
+</Steps>
+
+## Starting a Playground server in tests
+
+The `runCLI` function starts a local Playground server and returns an object with `serverUrl` (the base URL string) and `server` (the HTTP server instance). Pass a Blueprint to configure the WordPress instance:
+
+```typescript
+import { runCLI } from '@wp-playground/cli';
+
+const cli = await runCLI({
+  command: 'server',
+  blueprint: {
+    preferredVersions: { php: '8.3', wp: 'latest' },
+    login: true,
+    steps: [
+      {
+        step: 'installPlugin',
+        pluginData: {
+          resource: 'wordpress.org/plugins',
+          slug: 'woocommerce',
+        },
+      },
+    ],
+  },
+});
+```
+
+### Shared vs. per-test servers
+
+**Shared server** — one Playground instance for all tests in a `describe` block. Faster, but tests can affect each other's state:
+
+```typescript
+test.describe('Plugin settings', () => {
+  let cli: Awaited<ReturnType<typeof runCLI>>;
+
+  test.beforeAll(async () => {
+    cli = await runCLI({ command: 'server', blueprint });
+  });
+
+  test.afterAll(async () => {
+    await cli?.server?.close();
+  });
+
+  // All tests share the same WordPress instance
+});
+```
+
+**Per-test server** — each test gets a fresh instance. Slower, but fully isolated:
+
+```typescript
+let cli: Awaited<ReturnType<typeof runCLI>>;
+
+test.beforeEach(async () => {
+  cli = await runCLI({ command: 'server', blueprint });
+});
+
+test.afterEach(async () => {
+  await cli?.server?.close();
+});
+```
+
+Use shared servers when tests only read state. Use per-test servers when tests modify state (creating posts, changing settings, etc.).
+
+## Using Blueprints as test fixtures
+
+Blueprints define the WordPress state each test scenario requires. Mount your local plugin directory directly into the Playground instance to test your working copy:
+
+```typescript
+const cli = await runCLI({
+  command: 'server',
+  mount: {
+    './': '/wordpress/wp-content/plugins/my-plugin',
+  },
+  blueprint: {
+    preferredVersions: { php: '8.3', wp: 'latest' },
+    login: true,
+    steps: [
+      {
+        step: 'activatePlugin',
+        pluginPath: 'my-plugin/my-plugin.php',
+      },
+    ],
+  },
+});
+```
+
+Changes to your local files are reflected immediately. The `mount` property gives you precise control over which directory goes where; `--auto-mount` can handle detection automatically when you run the CLI directly.
+
+### Setting options and creating content
+
+```typescript
+const blueprint = {
+  login: true,
+  steps: [
+    {
+      step: 'setSiteOptions',
+      options: {
+        blogname: 'Test Site',
+        permalink_structure: '/%postname%/',
+      },
+    },
+    {
+      step: 'runPHP',
+      code: `<?php
+  require '/wordpress/wp-load.php';
+  wp_insert_post([
+    'post_title' => 'Test Post',
+    'post_content' => '<!-- wp:paragraph --><p>Hello World</p><!-- /wp:paragraph -->',
+    'post_status' => 'publish',
+  ]);
+`,
+    },
+  ],
+};
+```
+
+## Writing tests
+
+### Testing WordPress admin pages
+
+```typescript
+test('plugin settings page saves options', async ({ page }) => {
+  await page.goto(`${cli.serverUrl}/wp-admin/options-general.php?page=my-plugin`);
+
+  await page.getByLabel('API Key').fill('test-key-123');
+  await page.getByRole('button', { name: 'Save Changes' }).click();
+
+  await expect(page.getByText('Settings saved')).toBeVisible();
+  await expect(page.getByLabel('API Key')).toHaveValue('test-key-123');
+});
+```
+
+### Testing the front end
+
+```typescript
+test('plugin shortcode renders on front end', async ({ page }) => {
+  await page.goto(`${cli.serverUrl}/?p=2`);
+
+  // Add data-testid="my-plugin-widget" to your plugin markup for reliable selectors
+  await expect(page.getByTestId('my-plugin-widget')).toBeVisible();
+  await expect(page.getByTestId('my-plugin-widget')).toContainText('Expected content');
+});
+
+test('theme displays post correctly', async ({ page }) => {
+  await page.goto(`${cli.serverUrl}/test-post/`);
+
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Test Post');
+  await expect(page.getByText('Hello World', { exact: true })).toBeVisible();
+});
+```
+
+### Choosing locators
+
+Prefer locators that reflect how users see the page:
+
+```typescript
+// Preferred: semantic locator (works because WP renders a real <button>)
+await page.getByRole('button', { name: 'Save Changes' }).click();
+
+// Acceptable: test ID you added to your plugin markup
+await page.getByTestId('save-settings').click();
+
+// Avoid: brittle CSS selector tied to WordPress markup
+await page.locator('#submit').click();
+```
+
+<Note>
+  Some WordPress core elements (admin bar, meta boxes) rely on IDs and CSS classes rather than ARIA roles. Use CSS selectors like `#wpadminbar` or `#wpbody-content` for those. For your own plugin markup, always prefer `data-testid` attributes.
+</Note>
+
+## Testing across PHP and WordPress versions
+
+Parameterize tests to verify compatibility across version combinations:
+
+```typescript
+const versionMatrix = [
+  { php: '8.1', wp: '6.5' },
+  { php: '8.2', wp: '6.7' },
+  { php: '8.3', wp: 'latest' },
+];
+
+for (const { php, wp } of versionMatrix) {
+  test.describe(`PHP ${php} + WP ${wp}`, () => {
+    let versionCli: Awaited<ReturnType<typeof runCLI>>;
+
+    test.beforeAll(async () => {
+      versionCli = await runCLI({
+        command: 'server',
+        blueprint: {
+          preferredVersions: { php, wp },
+          login: true,
+          steps: [
+            {
+              step: 'activatePlugin',
+              pluginPath: 'my-plugin/my-plugin.php',
+            },
+          ],
+        },
+      });
+    });
+
+    test('admin page loads without errors', async ({ page }) => {
+      await page.goto(`${versionCli.serverUrl}/wp-admin/options-general.php?page=my-plugin`);
+      await expect(page.locator('.error')).not.toBeVisible();
+      await expect(page.locator('#wpbody-content')).toBeVisible();
+    });
+
+    test.afterAll(async () => {
+      await versionCli?.server?.close();
+    });
+  });
+}
+```
+
+Supported ranges: PHP 7.4–8.5, WordPress 6.3–6.8+, plus `latest`, `nightly`, and `beta`.
+
+## Running tests in CI
+
+Create `.github/workflows/e2e-tests.yml`:
+
+```yaml
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install chromium --with-deps
+
+      - name: Run E2E tests
+        run: npx playwright test
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Timeout errors">
+    Increase `timeout` in `playwright.config.ts`. WordPress boot time varies by environment. CI runners often need 120–180 seconds.
+  </Accordion>
+  <Accordion title="Port conflicts">
+    Let Playground auto-assign ports. Do not hardcode port numbers in your configuration. The `serverUrl` property on the returned object always contains the correct URL.
+  </Accordion>
+  <Accordion title="Browser not found">
+    Run `npx playwright install chromium` to download the browser binary. On CI, add `--with-deps` for required system libraries.
+  </Accordion>
+  <Accordion title="Tests pass locally but fail in CI">
+    CI runners have less memory and CPU. Increase timeouts, reduce parallel workers, and ensure `workers: 1` in the config.
+  </Accordion>
+  <Accordion title="WordPress not loading">
+    Check your Blueprint syntax against the [Blueprint schema](https://playground.wordpress.net/blueprint-schema.json). Invalid steps can fail silently.
+  </Accordion>
+</AccordionGroup>

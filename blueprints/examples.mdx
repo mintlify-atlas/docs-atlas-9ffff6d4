@@ -1,0 +1,315 @@
+---
+title: "Blueprint examples: common patterns and ready-to-run JSON"
+description: "Ready-to-run Blueprint examples: install plugins and themes, log in as admin, run PHP, set site options, use WP-CLI, and bundle resources."
+---
+
+The examples below cover the most common Blueprint tasks. Each is a complete, valid JSON Blueprint you can paste into the URL fragment on `playground.wordpress.net`, reference via `?blueprint-url`, or pass to the JavaScript API.
+
+To share a Blueprint as a link, minify the JSON and append it as the URL hash:
+
+```
+https://playground.wordpress.net/#{"steps":[{"step":"login"}]}
+```
+
+For longer Blueprints, host the JSON file publicly and use the query parameter instead:
+
+```
+https://playground.wordpress.net/?blueprint-url=https://example.com/my-blueprint.json
+```
+
+---
+
+<AccordionGroup>
+  <Accordion title="Install and activate a plugin from WordPress.org">
+    Fetches the Gutenberg plugin from the WordPress.org plugin directory, installs it, and activates it. The `options.activate` field is `true` by default, so you can omit it — it is included here for clarity.
+
+    ```json
+    {
+      "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+      "landingPage": "/wp-admin/plugins.php",
+      "steps": [
+        { "step": "login", "username": "admin" },
+        {
+          "step": "installPlugin",
+          "pluginData": {
+            "resource": "wordpress.org/plugins",
+            "slug": "gutenberg"
+          },
+          "options": {
+            "activate": true
+          }
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Install and activate a theme">
+    Installs the Pendant theme from the WordPress.org theme directory, activates it, and imports its starter content so the front end looks populated on first load.
+
+    ```json
+    {
+      "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+      "landingPage": "/",
+      "steps": [
+        { "step": "login", "username": "admin" },
+        {
+          "step": "installTheme",
+          "themeData": {
+            "resource": "wordpress.org/themes",
+            "slug": "pendant"
+          },
+          "options": {
+            "activate": true,
+            "importStarterContent": true
+          }
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Log in as admin and open wp-admin">
+    A minimal Blueprint that logs in the default admin user and lands on the WordPress dashboard. Useful as a base for any Blueprint that needs an authenticated session.
+
+    ```json
+    {
+      "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+      "landingPage": "/wp-admin/",
+      "preferredVersions": {
+        "php": "8.3",
+        "wp": "latest"
+      },
+      "steps": [
+        {
+          "step": "login",
+          "username": "admin"
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Run PHP code">
+    Uses `runPHP` to create a published post programmatically. Remember to `require_once '/wordpress/wp-load.php'` at the start of any code that uses WordPress functions.
+
+    ```json
+    {
+      "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+      "landingPage": "/",
+      "steps": [
+        {
+          "step": "runPHP",
+          "code": "<?php require_once '/wordpress/wp-load.php'; wp_insert_post(['post_title' => 'Hello from Blueprint', 'post_content' => 'This post was created by a Blueprint runPHP step.', 'post_status' => 'publish', 'post_author' => 1]);"
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Install plugin, set site options, and log in">
+    A combined Blueprint that installs the CoBlocks plugin, sets the blog name and description, and then logs in as admin and opens the Site Editor. Demonstrates how to sequence multiple step types.
+
+    ```json
+    {
+      "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+      "landingPage": "/wp-admin/site-editor.php",
+      "preferredVersions": {
+        "php": "8.3",
+        "wp": "latest"
+      },
+      "features": {
+        "networking": true
+      },
+      "steps": [
+        { "step": "login", "username": "admin" },
+        {
+          "step": "installPlugin",
+          "pluginData": {
+            "resource": "wordpress.org/plugins",
+            "slug": "coblocks"
+          },
+          "options": { "activate": true }
+        },
+        {
+          "step": "setSiteOptions",
+          "options": {
+            "blogname": "CoBlocks Demo",
+            "blogdescription": "A Playground site with CoBlocks installed."
+          }
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Enable WP_DEBUG and open wp-admin">
+    Enables the `WP_DEBUG` and `WP_DEBUG_DISPLAY` constants so PHP errors are visible on screen. Useful when developing or testing plugins and themes.
+
+    ```json
+    {
+      "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+      "landingPage": "/wp-admin/",
+      "steps": [
+        {
+          "step": "defineWpConfigConsts",
+          "consts": {
+            "WP_DEBUG": true,
+            "WP_DEBUG_DISPLAY": true,
+            "WP_DISABLE_FATAL_ERROR_HANDLER": true
+          }
+        },
+        { "step": "login", "username": "admin" }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Add a mu-plugin that runs on every request">
+    Writes a PHP file to `wp-content/mu-plugins/`. Must-use plugins load automatically on every request without activation. This example sets pretty permalinks on startup.
+
+    ```json
+    {
+      "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+      "landingPage": "/",
+      "steps": [
+        { "step": "login", "username": "admin" },
+        {
+          "step": "writeFile",
+          "path": "/wordpress/wp-content/mu-plugins/permalinks.php",
+          "data": "<?php add_action('after_setup_theme', function() { global $wp_rewrite; $wp_rewrite->set_permalink_structure('/%postname%/'); $wp_rewrite->flush_rules(); });"
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Run a WP-CLI command">
+    Creates a post using WP-CLI. The `extraLibraries` field pre-installs WP-CLI before the steps run. You can also omit it — Playground installs WP-CLI automatically when it detects a `wp-cli` step.
+
+    ```json
+    {
+      "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+      "landingPage": "/wp-admin/edit.php",
+      "extraLibraries": ["wp-cli"],
+      "steps": [
+        { "step": "login", "username": "admin" },
+        {
+          "step": "wp-cli",
+          "command": "wp post create --post_title='Created via WP-CLI' --post_status=publish"
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Product demo: plugin, theme, and starter content">
+    A pattern for plugin and theme authors who want to share a live demo. Install your plugin and theme from a URL, import demo content from a WXR file, and set any required site options.
+
+    ```json
+    {
+      "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+      "landingPage": "/",
+      "preferredVersions": {
+        "php": "8.3",
+        "wp": "latest"
+      },
+      "features": {
+        "networking": true
+      },
+      "steps": [
+        { "step": "login", "username": "admin" },
+        {
+          "step": "installPlugin",
+          "pluginData": {
+            "resource": "url",
+            "url": "https://your-site.com/your-plugin.zip"
+          },
+          "options": { "activate": true }
+        },
+        {
+          "step": "installTheme",
+          "themeData": {
+            "resource": "url",
+            "url": "https://your-site.com/your-theme.zip"
+          },
+          "options": { "activate": true }
+        },
+        {
+          "step": "importWxr",
+          "file": {
+            "resource": "url",
+            "url": "https://your-site.com/starter-content.wxr"
+          }
+        },
+        {
+          "step": "setSiteOptions",
+          "options": {
+            "blogname": "My Plugin Demo"
+          }
+        }
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Use a Blueprint bundle (ZIP with bundled assets)">
+    When your Blueprint references local files, package everything into a ZIP bundle. The `bundled` resource type resolves paths relative to the bundle root.
+
+    `blueprint.json` inside the ZIP:
+
+    ```json
+    {
+      "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+      "landingPage": "/",
+      "steps": [
+        { "step": "login", "username": "admin" },
+        {
+          "step": "installTheme",
+          "themeData": {
+            "resource": "bundled",
+            "path": "/my-theme.zip"
+          },
+          "options": { "activate": true }
+        },
+        {
+          "step": "installPlugin",
+          "pluginData": {
+            "resource": "bundled",
+            "path": "/my-plugin.zip"
+          },
+          "options": { "activate": true }
+        },
+        {
+          "step": "importWxr",
+          "file": {
+            "resource": "bundled",
+            "path": "/content/sample-content.wxr"
+          }
+        }
+      ]
+    }
+    ```
+
+    ZIP file structure:
+
+    ```
+    my-bundle.zip/
+    ├── blueprint.json
+    ├── my-theme.zip
+    ├── my-plugin.zip
+    └── content/
+        └── sample-content.wxr
+    ```
+
+    Load the bundle:
+
+    ```
+    https://playground.wordpress.net/?blueprint-url=https://example.com/my-bundle.zip
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Tip>
+  Browse the [Blueprints Gallery](https://github.com/WordPress/blueprints/blob/trunk/GALLERY.md) for a community-maintained collection of real-world Blueprint examples. You can also share your own examples in the [Blueprint examples wiki](https://github.com/WordPress/wordpress-playground/wiki/Blueprint-examples).
+</Tip>

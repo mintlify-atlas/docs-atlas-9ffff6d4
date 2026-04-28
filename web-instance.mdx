@@ -1,0 +1,104 @@
+---
+title: "The WordPress Playground website at playground.wordpress.net"
+description: "playground.wordpress.net is the hosted Playground — configure PHP and WordPress versions, use the Query API, work offline, and load Blueprints via URL."
+---
+
+[playground.wordpress.net](https://playground.wordpress.net) is the official hosted WordPress Playground. It gives you a full WordPress environment in your browser with no setup — and it doubles as a shareable, configurable URL you can use to send pre-built WordPress environments to teammates, users, or anyone else.
+
+## Configuring Playground via the URL
+
+The easiest way to configure a Playground instance is through query parameters. Add `?php=` and `?wp=` to the URL to select specific versions:
+
+```
+https://playground.wordpress.net/?php=8.2&wp=6.4
+```
+
+You can combine multiple parameters:
+
+```
+https://playground.wordpress.net/?php=8.1&wp=6.5&plugin=coblocks&theme=pendant
+```
+
+This is the [Query API](/developers/query-api). The available options include:
+
+| Parameter   | Description                                                   | Example              |
+| ----------- | ------------------------------------------------------------- | -------------------- |
+| `php`       | PHP version to use                                            | `php=8.2`            |
+| `wp`        | WordPress version to use                                      | `wp=6.5`             |
+| `plugin`    | WordPress.org plugin slug to install (repeatable)             | `plugin=coblocks`    |
+| `theme`     | WordPress.org theme slug to install (repeatable)              | `theme=pendant`      |
+| `language`  | WordPress language/locale                                     | `language=de_DE`     |
+| `multisite` | Enable WordPress multisite                                    | `multisite=true`     |
+| `networking`| Enable network access to Plugin Directory and WordPress APIs  | `networking=enabled` |
+
+<Note>
+  Only major versions are supported. `wp=6.2` loads the latest release in the 6.2 line. Minor version strings like `wp=6.1.2` or `php=7.4.9` do not work.
+</Note>
+
+To test the latest WordPress nightly build:
+
+```
+https://playground.wordpress.net/?wp=nightly
+```
+
+## Loading a Blueprint via URL
+
+For complex configurations — multiple plugins, custom PHP code, imported content — pass a Blueprint JSON file using the `blueprint-url` parameter:
+
+```
+https://playground.wordpress.net/?blueprint-url=https://example.com/my-blueprint.json
+```
+
+You can also embed a Blueprint directly in the URL fragment. The Playground website reads the `#` part of the URL as a Base64-encoded Blueprint JSON:
+
+```
+https://playground.wordpress.net/#{"steps":[{"step":"login"}]}
+```
+
+The [Blueprints builder](https://playground.wordpress.net/builder/builder.html) lets you edit a Blueprint in a browser-based editor and run it instantly — useful for prototyping before publishing a Blueprint URL.
+
+## The settings panel and toolbar
+
+The Playground toolbar provides quick access to instance configuration and management tools.
+
+### Settings panel
+
+The **Settings** panel lets you change your running instance's PHP version, WordPress version, language, and other options — without touching the URL. Changes take effect immediately by reloading the instance.
+
+### Playground manager
+
+The **Playground Manager** panel gives you full control over your instance:
+
+- **File Browser**: A built-in IDE for editing files, uploading plugins and themes, and live-editing code. Playground reloads changes in real time.
+- **Blueprint editor**: Create, edit, validate, and run Blueprints directly in the browser.
+- **Database**: Manage the database with Adminer or phpMyAdmin, or download it as a `.sqlite` file.
+- **Logs**: View PHP and WordPress error output when something goes wrong.
+
+You can click **Save** to persist the current instance and list it in the Launch Panel for later access.
+
+#### Additional actions
+
+The additional actions menu (accessible from the Playground Manager) includes:
+
+- **Export to GitHub**: Export plugins, themes, or the entire `wp-content` directory as a pull request to any public GitHub repository.
+- **Download as .zip**: Download the current instance as a `.zip` archive containing all WordPress core files, plugins, and themes.
+
+### Launch panel
+
+The **Launch Panel** lists all the ways to start a Playground instance: import a `.zip` file, load from a GitHub repository, preview pull requests from WordPress core or Gutenberg, or pick from more than 40 curated Blueprints in the Blueprint Gallery.
+
+## Offline support
+
+When you first visit [playground.wordpress.net](https://playground.wordpress.net), the browser automatically caches all necessary files using a service worker. After that, Playground works without an internet connection — you can open the URL and get a running WordPress site even when offline.
+
+You can also install Playground as a Progressive Web App (PWA) to launch it from your home screen like a native app.
+
+<Tip>
+  To verify offline support yourself, open the browser developer tools, go to the **Network** tab, select **Offline**, and refresh the page. WordPress Playground continues to load from the service worker cache.
+</Tip>
+
+## Availability notice
+
+<Warning>
+  playground.wordpress.net is a community resource with no uptime guarantee. If you need reliable availability for a production integration, [host your own Playground instance](/developers/architecture-overview).
+</Warning>

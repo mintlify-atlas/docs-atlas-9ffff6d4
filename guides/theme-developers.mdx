@@ -1,0 +1,220 @@
+---
+title: "WordPress Playground guide for WordPress theme developers"
+description: "Build, preview, and demo WordPress themes locally with zero setup using the Playground CLI, Blueprints, and GitHub Actions PR previews."
+---
+
+WordPress Playground gives theme developers an instant, isolated WordPress environment without any infrastructure setup. Run your theme locally with live file-syncing, populate it with realistic starter content, create a shareable demo URL for anyone to preview, and automatically attach Playground previews to every pull request on GitHub.
+
+## Local development workflow
+
+<Steps>
+  <Step title="Clone your theme and start a server">
+    Navigate to the root of your theme directory and run `--auto-mount`. Playground detects that the directory is a theme, mounts it into `wp-content/themes/`, and activates it automatically.
+
+    ```bash
+    git clone git@github.com:WordPress/community-themes.git
+    cd community-themes/blue-note
+    npx @wp-playground/cli server --auto-mount
+    ```
+
+    The local server opens at `http://localhost:9400` with your theme active. Every file change is immediately reflected without a restart because the directory is mounted directly into the virtual filesystem.
+  </Step>
+
+  <Step title="Activate your theme via a Blueprint">
+    For more control over the startup environment — or when `--auto-mount` does not detect the right path — use the `activateTheme` Blueprint step explicitly.
+
+    ```json
+    {
+      "login": true,
+      "steps": [
+        {
+          "step": "installTheme",
+          "themeData": {
+            "resource": "wordpress.org/themes",
+            "slug": "twentytwenty"
+          },
+          "options": {
+            "activate": true
+          }
+        }
+      ]
+    }
+    ```
+
+    To install a theme from a GitHub repository, use the `git:directory` resource:
+
+    ```json
+    {
+      "steps": [
+        {
+          "step": "installTheme",
+          "themeData": {
+            "resource": "git:directory",
+            "url": "https://github.com/Automattic/themes",
+            "ref": "trunk",
+            "path": "assembler"
+          },
+          "options": {
+            "activate": true
+          }
+        }
+      ]
+    }
+    ```
+  </Step>
+
+  <Step title="Import theme starter content">
+    Set `importStarterContent: true` inside the `options` object of the `installTheme` step to populate the site with sample pages, posts, and media that demonstrate your theme's layouts.
+
+    ```json
+    {
+      "steps": [
+        {
+          "step": "installTheme",
+          "themeData": {
+            "resource": "wordpress.org/themes",
+            "slug": "twentytwenty"
+          },
+          "options": {
+            "activate": true,
+            "importStarterContent": true
+          }
+        }
+      ]
+    }
+    ```
+
+    <Tip>
+      Combine starter content with the `setSiteOptions` step to set a static front page, configure pretty permalinks, and match the page structure shown in your theme's screenshots.
+    </Tip>
+  </Step>
+
+  <Step title="Configure the site to match your demo">
+    Blueprint steps let you shape the WordPress instance to highlight your theme's best features: set the site name, configure the front page, enable pretty permalinks, and install companion plugins.
+
+    ```json
+    {
+      "login": true,
+      "plugins": ["todo-list-block", "markdown-comment-block"],
+      "steps": [
+        {
+          "step": "installTheme",
+          "themeData": {
+            "resource": "wordpress.org/themes",
+            "slug": "twentytwenty"
+          },
+          "options": {
+            "activate": true,
+            "importStarterContent": true
+          }
+        },
+        {
+          "step": "setSiteOptions",
+          "options": {
+            "blogname": "My Theme Demo",
+            "blogdescription": "A beautiful block theme",
+            "show_on_front": "page",
+            "page_on_front": 6
+          }
+        },
+        {
+          "step": "writeFile",
+          "path": "/wordpress/wp-content/mu-plugins/rewrite.php",
+          "data": "<?php add_action('after_setup_theme', function() { global $wp_rewrite; $wp_rewrite->set_permalink_structure('/%postname%/'); $wp_rewrite->flush_rules(); });"
+        }
+      ]
+    }
+    ```
+  </Step>
+
+  <Step title="Share a demo link">
+    To share a live demo, paste your Blueprint JSON into the [Blueprints builder](https://playground.wordpress.net/builder/builder.html) to generate a shareable URL. Anyone who clicks the link gets a fully configured WordPress site with your theme active — no install required.
+
+    You can also load any theme from the WordPress Themes Directory directly from the Playground URL using the `theme` query parameter:
+
+    ```
+    https://playground.wordpress.net/?theme=disco
+    ```
+  </Step>
+
+  <Step title="Add PR preview buttons with GitHub Actions">
+    If your theme lives on GitHub, the `action-wp-playground-pr-preview` action adds a Playground preview button to every pull request. Reviewers test the exact code from the PR branch with one click.
+
+    Create `.github/workflows/pr-preview.yml`:
+
+    ```yaml
+    name: PR Preview
+    on:
+      pull_request:
+        types: [opened, synchronize, reopened, edited]
+
+    jobs:
+      preview:
+        runs-on: ubuntu-latest
+        permissions:
+          contents: read
+          pull-requests: write
+        steps:
+          - name: Post Playground Preview Button
+            uses: WordPress/action-wp-playground-pr-preview@v2
+            with:
+              github-token: ${{ secrets.GITHUB_TOKEN }}
+              theme-path: .
+    ```
+
+    <Note>
+      Reference the action as a **step** inside `jobs.<job_id>.steps:`, not at the job level. Using `jobs.<job_id>.uses:` is valid YAML for reusable workflows but will not work with this action.
+    </Note>
+  </Step>
+</Steps>
+
+## Theme demo Blueprint reference
+
+The following Blueprint combines the most common theme demo techniques into a single configuration you can adapt to your project:
+
+```json
+{
+  "landingPage": "/",
+  "login": true,
+  "plugins": ["todo-list-block"],
+  "steps": [
+    {
+      "step": "installTheme",
+      "themeData": {
+        "resource": "wordpress.org/themes",
+        "slug": "twentytwenty"
+      },
+      "options": {
+        "activate": true,
+        "importStarterContent": true
+      }
+    },
+    {
+      "step": "resetData"
+    },
+    {
+      "step": "setSiteOptions",
+      "options": {
+        "blogname": "Theme Demo",
+        "blogdescription": "Showcasing Twenty Twenty",
+        "show_on_front": "page",
+        "page_on_front": 6,
+        "page_for_posts": 2
+      }
+    },
+    {
+      "step": "updateUserMeta",
+      "meta": {
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "admin_color": "modern"
+      },
+      "userId": 1
+    }
+  ]
+}
+```
+
+<Tip>
+  The ["Stylish Press"](https://github.com/WordPress/blueprints/tree/trunk/blueprints/stylish-press) and ["Loading, activating, and configuring a theme from a GitHub repository"](https://github.com/WordPress/blueprints/tree/trunk/blueprints/install-activate-setup-theme-from-gh-repo) examples in the [Blueprints Gallery](https://github.com/WordPress/blueprints/blob/trunk/GALLERY.md) are great real-world references for this pattern.
+</Tip>

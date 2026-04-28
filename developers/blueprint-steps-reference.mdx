@@ -1,0 +1,829 @@
+---
+title: "Blueprint steps reference: all steps, params, and examples"
+description: "Complete reference for every Blueprint step — plugin install, PHP execution, file system operations, content import, and WordPress configuration."
+---
+
+Blueprint steps are the building blocks of a Blueprint. Each step is a JSON object with a `"step"` field that identifies the operation to perform, plus any additional fields that configure it. Steps execute sequentially in the order they are listed in the `"steps"` array. This page documents every available step, organised by category.
+
+<AccordionGroup>
+
+  <Accordion title="Plugin Management">
+
+    ### installPlugin
+
+    Installs a WordPress plugin from a zip file, a single PHP file, a directory, or a WordPress.org slug.
+
+    <ParamField path="step" type='"installPlugin"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="pluginData" type="FileReference | DirectoryReference" required>
+      The plugin to install. Accepts any Blueprint resource reference — a URL, a WordPress.org plugin slug (`wordpress.org/plugins`), a virtual filesystem path (`vfs`), a `git:directory` reference, or a `literal` file reference.
+
+      <Expandable title="Common resource shapes">
+        ```json
+        { "resource": "wordpress.org/plugins", "slug": "gutenberg" }
+        { "resource": "url", "url": "https://example.com/my-plugin.zip" }
+        { "resource": "vfs", "path": "/tmp/my-plugin.zip" }
+        ```
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="options" type="InstallPluginOptions">
+      Optional installation options.
+
+      <Expandable title="InstallPluginOptions">
+        <ParamField path="activate" type="boolean">
+          Whether to activate the plugin after installing it. Defaults to `true`.
+        </ParamField>
+        <ParamField path="targetFolderName" type="string">
+          Override the folder name the plugin is installed into inside `wp-content/plugins/`. Defaults to inferring the name from `pluginData`.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="ifAlreadyInstalled" type='"overwrite" | "skip" | "error"'>
+      Controls what happens when a plugin with the same folder name already exists. Defaults to `"overwrite"`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "wordpress.org/plugins",
+        "slug": "gutenberg"
+      },
+      "options": {
+        "activate": true
+      }
+    }
+    ```
+
+    ---
+
+    ### activatePlugin
+
+    Activates an already-installed plugin. If you install a plugin via `installPlugin` with `activate: true` (the default), you do not need this step separately.
+
+    <ParamField path="step" type='"activatePlugin"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="pluginPath" type="string" required>
+      Path to the plugin. Accepts either an absolute path to the plugin directory (`/wordpress/wp-content/plugins/my-plugin`) or a path relative to the plugins directory (`my-plugin/my-plugin.php`).
+    </ParamField>
+
+    <ParamField path="pluginName" type="string">
+      Human-readable plugin name shown in the progress bar. Optional.
+    </ParamField>
+
+    ```json
+    {
+      "step": "activatePlugin",
+      "pluginPath": "/wordpress/wp-content/plugins/gutenberg",
+      "pluginName": "Gutenberg"
+    }
+    ```
+
+  </Accordion>
+
+  <Accordion title="Theme Management">
+
+    ### installTheme
+
+    Installs a WordPress theme from a zip file, a directory, or a WordPress.org slug.
+
+    <ParamField path="step" type='"installTheme"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="themeData" type="FileReference | DirectoryReference" required>
+      The theme to install. Accepts any Blueprint resource reference — a URL, a WordPress.org theme slug (`wordpress.org/themes`), a `vfs` path, a `git:directory` reference, or a `literal` file reference.
+
+      <Expandable title="Common resource shapes">
+        ```json
+        { "resource": "wordpress.org/themes", "slug": "pendant" }
+        { "resource": "url", "url": "https://example.com/my-theme.zip" }
+        ```
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="options" type="InstallThemeOptions">
+      Optional installation options.
+
+      <Expandable title="InstallThemeOptions">
+        <ParamField path="activate" type="boolean">
+          Whether to activate the theme after installing it. Defaults to `true`.
+        </ParamField>
+        <ParamField path="importStarterContent" type="boolean">
+          Whether to import the theme's starter content after activation. Defaults to `false`.
+        </ParamField>
+        <ParamField path="targetFolderName" type="string">
+          Override the folder name inside `wp-content/themes/`. Defaults to inferring the name from `themeData`.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    <ParamField path="ifAlreadyInstalled" type='"overwrite" | "skip" | "error"'>
+      Controls what happens when a theme with the same folder name already exists. Defaults to `"overwrite"`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "installTheme",
+      "themeData": {
+        "resource": "wordpress.org/themes",
+        "slug": "pendant"
+      },
+      "options": {
+        "activate": true,
+        "importStarterContent": true
+      }
+    }
+    ```
+
+    ---
+
+    ### activateTheme
+
+    Activates an already-installed theme by its folder name.
+
+    <ParamField path="step" type='"activateTheme"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="themeFolderName" type="string" required>
+      The folder name of the theme inside `wp-content/themes/`, for example `storefront` or `twentytwentyfour`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "activateTheme",
+      "themeFolderName": "storefront"
+    }
+    ```
+
+  </Accordion>
+
+  <Accordion title="Authentication">
+
+    ### login
+
+    Logs in to WordPress. Under the hood this sets the `PLAYGROUND_AUTO_LOGIN_AS_USER` PHP constant, which is consumed by a must-use plugin to perform a cookie-based login on the first page load.
+
+    <ParamField path="step" type='"login"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="username" type="string">
+      The WordPress username to log in as. Defaults to `"admin"`.
+    </ParamField>
+
+    <Note>
+      The `password` field is deprecated and has no effect. Authentication is performed by a trusted mu-plugin so no password is needed.
+    </Note>
+
+    ```json
+    {
+      "step": "login",
+      "username": "admin"
+    }
+    ```
+
+  </Accordion>
+
+  <Accordion title="PHP Execution">
+
+    ### runPHP
+
+    Evaluates a PHP code string. Use this step to call WordPress functions, insert posts, update options, or perform any other PHP-level operation. To use WordPress functions you must first require `wp-load.php`.
+
+    <ParamField path="step" type='"runPHP"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="code" type="string" required>
+      A PHP code string to execute. Must begin with `<?php`. Always use absolute paths — for example `/wordpress/wp-load.php`, not `wordpress/wp-load.php`.
+    </ParamField>
+
+    <Warning>
+      Relative paths like `'wordpress/wp-load.php'` no longer work. The working directory changed from `/` to `/wordpress` in a recent release. Use absolute paths such as `/wordpress/wp-load.php`.
+    </Warning>
+
+    ```json
+    {
+      "step": "runPHP",
+      "code": "<?php require_once '/wordpress/wp-load.php'; wp_insert_post(['post_title' => 'Hello', 'post_status' => 'publish']); ?>"
+    }
+    ```
+
+    ---
+
+    ### runPHPWithOptions
+
+    Like `runPHP` but accepts the full `PHPRunOptions` object, giving you control over the script path, request method, headers, body, environment variables, and `$_SERVER` entries.
+
+    <ParamField path="step" type='"runPHPWithOptions"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="options" type="PHPRunOptions" required>
+      Full run options. All fields are optional except that at least one of `code` or `scriptPath` should be set.
+
+      <Expandable title="PHPRunOptions fields">
+        <ParamField path="code" type="string">
+          PHP code snippet to evaluate.
+        </ParamField>
+        <ParamField path="scriptPath" type="string">
+          Absolute path to a `.php` file to execute.
+        </ParamField>
+        <ParamField path="relativeUri" type="string">
+          The request URI after rewriting, for example `/wp-login.php`.
+        </ParamField>
+        <ParamField path="method" type="string">
+          HTTP method. Defaults to `GET`.
+        </ParamField>
+        <ParamField path="headers" type="object">
+          HTTP request headers as a `Record<string, string>`.
+        </ParamField>
+        <ParamField path="body" type="string | Uint8Array">
+          Raw request body.
+        </ParamField>
+        <ParamField path="env" type="object">
+          Environment variables to set for this run.
+        </ParamField>
+        <ParamField path="$_SERVER" type="object">
+          `$_SERVER` entries to set for this run.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+
+    ```json
+    {
+      "step": "runPHPWithOptions",
+      "options": {
+        "code": "<?php require_once '/wordpress/wp-load.php'; update_option('blogname', file_get_contents('php://input')); ?>",
+        "body": "My New Site Name"
+      }
+    }
+    ```
+
+    ---
+
+    ### wp-cli
+
+    Runs a WP-CLI command. The `wp-cli.phar` binary must be available, either by listing `"wp-cli"` in the Blueprint's `extraLibraries` field or by ensuring it is present at `/tmp/wp-cli.phar`.
+
+    <ParamField path="step" type='"wp-cli"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="command" type="string | string[]" required>
+      The WP-CLI command to run. Must start with `wp`. Can be a single string (`"wp post create --post_title='Hello'"`) or a pre-split array of arguments.
+    </ParamField>
+
+    <ParamField path="wpCliPath" type="string">
+      Absolute path to `wp-cli.phar` inside the Playground filesystem. Defaults to `/tmp/wp-cli.phar`.
+    </ParamField>
+
+    <Note>
+      WordPress multisite does not support custom ports. Running this step on `localhost` with a non-standard port will throw an error for multisite operations.
+    </Note>
+
+    ```json
+    {
+      "step": "wp-cli",
+      "command": "wp post create --post_title='Test post' --post_excerpt='Some content' --post_status=publish"
+    }
+    ```
+
+    ---
+
+    ### runSql
+
+    Executes one or more SQL queries against the WordPress database. Each non-empty line must contain a valid SQL statement. Supports multiline queries, comments, and semicolon-separated statements using streaming semantics. Requires the `sqlite-database-integration` plugin (included by default in Playground).
+
+    <ParamField path="step" type='"runSql"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="sql" type="FileReference" required>
+      A Blueprint resource reference pointing to a `.sql` file. Can be a `literal`, `url`, or `vfs` resource.
+    </ParamField>
+
+    ```json
+    {
+      "step": "runSql",
+      "sql": {
+        "resource": "literal",
+        "name": "cleanup.sql",
+        "contents": "DELETE FROM wp_posts WHERE post_status = 'auto-draft';"
+      }
+    }
+    ```
+
+  </Accordion>
+
+  <Accordion title="File System">
+
+    ### writeFile
+
+    Writes a single file to the Playground filesystem. Creates the file if it does not exist; overwrites it if it does. The parent directory must already exist.
+
+    <ParamField path="step" type='"writeFile"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="path" type="string" required>
+      Absolute path to write to, for example `/wordpress/wp-content/mu-plugins/my-plugin.php`. Must start with `/`.
+    </ParamField>
+
+    <ParamField path="data" type="FileReference | string | Uint8Array" required>
+      The file content. Can be a plain string, raw bytes, or a Blueprint resource reference.
+    </ParamField>
+
+    ```json
+    {
+      "step": "writeFile",
+      "path": "/wordpress/test.php",
+      "data": "<?php echo 'Hello World!'; ?>"
+    }
+    ```
+
+    ---
+
+    ### writeFiles
+
+    Writes an entire directory tree to the Playground filesystem in one step. Useful for installing a plugin or theme from a directory structure defined inline or via a `git:directory` resource.
+
+    <ParamField path="step" type='"writeFiles"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="writeToPath" type="string" required>
+      Absolute path to the destination directory. Must start with `/`.
+    </ParamField>
+
+    <ParamField path="filesTree" type="DirectoryReference" required>
+      A Blueprint directory resource. The `name` key names the root directory; `files` is a nested object where keys are file names or subdirectory names, and values are either string file contents or nested `files` objects.
+
+      <Expandable title="Inline directory example">
+        ```json
+        {
+          "name": "my-plugin",
+          "files": {
+            "index.php": "<?php echo '<a>Hello!</a>'; ?>",
+            "public": {
+              "style.css": "a { color: red; }"
+            }
+          }
+        }
+        ```
+      </Expandable>
+    </ParamField>
+
+    ```json
+    {
+      "step": "writeFiles",
+      "writeToPath": "/wordpress/wp-content/plugins/my-plugin",
+      "filesTree": {
+        "name": "my-plugin",
+        "files": {
+          "index.php": "<?php // Plugin code here"
+        }
+      }
+    }
+    ```
+
+    ---
+
+    ### cp
+
+    Copies a file from one path to another.
+
+    <ParamField path="step" type='"cp"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="fromPath" type="string" required>
+      Absolute source path.
+    </ParamField>
+
+    <ParamField path="toPath" type="string" required>
+      Absolute destination path.
+    </ParamField>
+
+    ```json
+    {
+      "step": "cp",
+      "fromPath": "/wordpress/index.php",
+      "toPath": "/wordpress/index2.php"
+    }
+    ```
+
+    ---
+
+    ### mv
+
+    Moves or renames a file or directory.
+
+    <ParamField path="step" type='"mv"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="fromPath" type="string" required>
+      Absolute source path.
+    </ParamField>
+
+    <ParamField path="toPath" type="string" required>
+      Absolute destination path.
+    </ParamField>
+
+    ```json
+    {
+      "step": "mv",
+      "fromPath": "/wordpress/index.php",
+      "toPath": "/wordpress/index2.php"
+    }
+    ```
+
+    ---
+
+    ### rm
+
+    Removes a file at the specified path.
+
+    <ParamField path="step" type='"rm"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="path" type="string" required>
+      Absolute path to the file to delete. Must start with `/`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "rm",
+      "path": "/wordpress/wp-content/plugins/hello.php"
+    }
+    ```
+
+    ---
+
+    ### mkdir
+
+    Creates a directory at the specified path. All parent directories must already exist.
+
+    <ParamField path="step" type='"mkdir"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="path" type="string" required>
+      Absolute path of the directory to create.
+    </ParamField>
+
+    ```json
+    {
+      "step": "mkdir",
+      "path": "/wordpress/my-new-folder"
+    }
+    ```
+
+    ---
+
+    ### rmdir
+
+    Removes a directory at the specified path.
+
+    <ParamField path="step" type='"rmdir"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="path" type="string" required>
+      Absolute path of the directory to remove. Must start with `/`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "rmdir",
+      "path": "/wordpress/wp-admin"
+    }
+    ```
+
+    ---
+
+    ### unzip
+
+    Extracts a zip file to a destination directory.
+
+    <ParamField path="step" type='"unzip"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="zipFile" type="FileReference">
+      A Blueprint resource reference pointing to the zip file to extract. Use this field; `zipPath` is deprecated.
+    </ParamField>
+
+    <ParamField path="extractToPath" type="string" required>
+      Absolute path to the directory where the zip contents will be extracted.
+    </ParamField>
+
+    ```json
+    {
+      "step": "unzip",
+      "zipFile": {
+        "resource": "vfs",
+        "path": "/wordpress/data.zip"
+      },
+      "extractToPath": "/wordpress"
+    }
+    ```
+
+  </Accordion>
+
+  <Accordion title="Content Import / Export">
+
+    ### importWxr
+
+    Imports a WordPress eXtended RSS (WXR) file into WordPress using the WordPress Importer. This installs and runs the importer plugin to create posts, pages, custom post types, terms, and attachments from the WXR file.
+
+    <ParamField path="step" type='"importWxr"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="file" type="FileReference" required>
+      A Blueprint resource reference to the `.wxr` (XML) file to import. Supports `url`, `vfs`, `literal`, and other resource types.
+    </ParamField>
+
+    <ParamField path="importer" type='"default" | "data-liberation"'>
+      The importer to use. `"default"` uses the humanmade WordPress Importer. `"data-liberation"` is an experimental alternative. This option is deprecated — the syntax will not be removed but the option may be ignored in future releases.
+    </ParamField>
+
+    ```json
+    {
+      "step": "importWxr",
+      "file": {
+        "resource": "url",
+        "url": "https://your-site.com/starter-content.wxr"
+      }
+    }
+    ```
+
+    ---
+
+    ### importWordPressFiles
+
+    Imports a full WordPress site from a zip file, replacing the document root contents. Any Playground-managed files (like the SQLite integration plugin) are preserved. The site URL is updated to the current Playground URL after import.
+
+    <ParamField path="step" type='"importWordPressFiles"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="wordPressFilesZip" type="FileReference" required>
+      A Blueprint resource reference pointing to the zip file. The zip should contain top-level WordPress directories and files (`wp-content`, `wp-includes`, `wp-admin`, etc.).
+    </ParamField>
+
+    <ParamField path="pathInZip" type="string">
+      A path prefix inside the zip where the WordPress files are located. Useful if the zip has a wrapper folder. Defaults to the zip root.
+    </ParamField>
+
+    ```json
+    {
+      "step": "importWordPressFiles",
+      "wordPressFilesZip": {
+        "resource": "url",
+        "url": "https://mysite.com/import.zip"
+      }
+    }
+    ```
+
+  </Accordion>
+
+  <Accordion title="WordPress Configuration">
+
+    ### defineWpConfigConsts
+
+    Defines PHP constants in `wp-config.php`. Can be called multiple times; constants are merged. Use this step to enable `WP_DEBUG`, set `WP_ENVIRONMENT_TYPE`, or configure any other constant your plugin or theme reads from `wp-config.php`.
+
+    <ParamField path="step" type='"defineWpConfigConsts"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="consts" type="Record<string, unknown>" required>
+      An object whose keys are constant names and values are the constant values. Values can be strings, numbers, or booleans.
+    </ParamField>
+
+    <ParamField path="method" type='"rewrite-wp-config" | "define-before-run"'>
+      How to apply the constants.
+
+      - `"define-before-run"` (default): Defines the constant at runtime before each request without altering any files on disk. May conflict with existing `define()` calls in `wp-config.php`.
+      - `"rewrite-wp-config"`: Rewrites `wp-config.php` to add explicit `define()` calls. Alters the file on disk but does not conflict with existing `define()` calls.
+    </ParamField>
+
+    ```json
+    {
+      "step": "defineWpConfigConsts",
+      "consts": {
+        "WP_DEBUG": true,
+        "WP_DEBUG_LOG": true
+      }
+    }
+    ```
+
+    ---
+
+    ### defineSiteUrl
+
+    Sets the `WP_HOME` and `WP_SITEURL` constants to a custom URL. Useful when deploying Playground on a custom domain or building tools like `wp-now` that serve WordPress on a non-standard URL.
+
+    <ParamField path="step" type='"defineSiteUrl"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="siteUrl" type="string" required>
+      The fully-qualified URL to set as both `WP_HOME` and `WP_SITEURL`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "defineSiteUrl",
+      "siteUrl": "https://my-custom-domain.example.com"
+    }
+    ```
+
+    ---
+
+    ### setSiteLanguage
+
+    Sets the site language and downloads translation files for WordPress core, all active plugins, and all installed themes. Fetches translations from the WordPress.org translations API.
+
+    <ParamField path="step" type='"setSiteLanguage"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="language" type="string" required>
+      The language code in WordPress locale format, for example `"fr_FR"`, `"de_DE"`, or `"ja"`. Must match a language available on [translate.wordpress.org](https://translate.wordpress.org).
+    </ParamField>
+
+    ```json
+    {
+      "step": "setSiteLanguage",
+      "language": "fr_FR"
+    }
+    ```
+
+    ---
+
+    ### setSiteOptions
+
+    Updates WordPress site options using `update_option()`. Equivalent to calling `update_option($name, $value)` for each key-value pair in the `options` object.
+
+    <ParamField path="step" type='"setSiteOptions"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="options" type="Record<string, unknown>" required>
+      An object whose keys are option names (as stored in `wp_options`) and values are the new option values.
+    </ParamField>
+
+    ```json
+    {
+      "step": "setSiteOptions",
+      "options": {
+        "blogname": "My Blog",
+        "blogdescription": "A great blog"
+      }
+    }
+    ```
+
+    ---
+
+    ### enableMultisite
+
+    Converts the WordPress installation to a multisite network. Requires `wp-cli` to be available (list `"wp-cli"` in `extraLibraries`).
+
+    <ParamField path="step" type='"enableMultisite"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="wpCliPath" type="string">
+      Path to `wp-cli.phar`. Defaults to `/tmp/wp-cli.phar`.
+    </ParamField>
+
+    <Warning>
+      WordPress multisite does not support custom port numbers. If Playground is running on `localhost` with a custom port, this step will throw an error.
+    </Warning>
+
+    ```json
+    {
+      "step": "enableMultisite"
+    }
+    ```
+
+    ---
+
+    ### updateUserMeta
+
+    Updates user meta values using `update_user_meta()`. Equivalent to calling `update_user_meta($userId, $name, $value)` for each key-value pair in the `meta` object.
+
+    <ParamField path="step" type='"updateUserMeta"' required>
+      Step identifier.
+    </ParamField>
+
+    <ParamField path="meta" type="Record<string, unknown>" required>
+      An object whose keys are meta key names and values are the new meta values.
+    </ParamField>
+
+    <ParamField path="userId" type="number" required>
+      The ID of the WordPress user to update.
+    </ParamField>
+
+    ```json
+    {
+      "step": "updateUserMeta",
+      "meta": {
+        "first_name": "John",
+        "last_name": "Doe"
+      },
+      "userId": 1
+    }
+    ```
+
+  </Accordion>
+
+  <Accordion title="Data">
+
+    ### resetData
+
+    Deletes all WordPress posts, post meta, comments, and comment meta, and resets the auto-increment sequences for those tables to zero. Useful for setting up a clean site from a Blueprint that previously created sample content.
+
+    <ParamField path="step" type='"resetData"' required>
+      Step identifier. No other fields are required.
+    </ParamField>
+
+    ```json
+    {
+      "step": "resetData"
+    }
+    ```
+
+  </Accordion>
+
+</AccordionGroup>
+
+---
+
+## Blueprint resource types
+
+Most steps that accept a file or directory use a Blueprint **resource reference** rather than raw file data. The following resource types are supported:
+
+| Resource type | Description |
+|---|---|
+| `wordpress.org/plugins` | Download a plugin from WordPress.org by slug |
+| `wordpress.org/themes` | Download a theme from WordPress.org by slug |
+| `url` | Fetch a file from an arbitrary URL |
+| `vfs` | Reference a file already in the Playground virtual filesystem |
+| `literal` | Inline file content as a string in the Blueprint JSON |
+| `git:directory` | Check out a directory from a Git repository |
+
+```json
+{ "resource": "wordpress.org/plugins", "slug": "woocommerce" }
+{ "resource": "url", "url": "https://example.com/plugin.zip" }
+{ "resource": "vfs", "path": "/tmp/my-file.zip" }
+{ "resource": "literal", "name": "hello.php", "contents": "<?php echo 'hi';" }
+```
+
+---
+
+## Blueprint top-level fields
+
+A complete Blueprint object can include the following top-level fields in addition to `steps`:
+
+| Field | Type | Description |
+|---|---|---|
+| `landingPage` | `string` | Path to navigate to after all steps complete, for example `/wp-admin/` |
+| `preferredVersions` | `object` | Request specific `php` and `wp` versions, e.g. `{ "php": "8.2", "wp": "6.5" }` |
+| `features` | `object` | Enable optional features: `{ "networking": true }` |
+| `extraLibraries` | `string[]` | Load extra binaries before steps run. Currently supports `"wp-cli"` |
+| `steps` | `StepDefinition[]` | Ordered list of steps to execute |
+
+```json
+{
+  "landingPage": "/wp-admin/",
+  "preferredVersions": {
+    "php": "8.2",
+    "wp": "6.5"
+  },
+  "features": {
+    "networking": true
+  },
+  "extraLibraries": ["wp-cli"],
+  "steps": [
+    { "step": "login", "username": "admin" },
+    {
+      "step": "installPlugin",
+      "pluginData": { "resource": "wordpress.org/plugins", "slug": "woocommerce" }
+    }
+  ]
+}
+```

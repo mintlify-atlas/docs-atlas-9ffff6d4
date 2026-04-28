@@ -1,0 +1,376 @@
+---
+title: "WordPress Playground CLI for local WordPress development"
+description: "Run a local WordPress server in seconds with @wp-playground/cli — no Docker, MySQL, or Apache required. Switch PHP and WordPress versions with a flag."
+---
+
+`@wp-playground/cli` is a Node.js command-line tool that spins up a local WordPress environment using WebAssembly-powered PHP and SQLite. It is the recommended replacement for the deprecated `@wp-now/wp-now` package. Use it when you need a zero-configuration WordPress server for plugin or theme development, Blueprint execution, or automated testing — all without installing Apache, MySQL, or Docker.
+
+## Requirements
+
+<Note>
+  The Playground CLI requires **Node.js 20.18 or higher** (the current Long-Term
+  Support release). Download it from [nodejs.org](https://nodejs.org/en/download).
+</Note>
+
+## Getting started
+
+<Steps>
+  <Step title="Navigate to your project directory">
+    Go to your plugin or theme directory, or any directory you want to mount into WordPress.
+
+    ```bash
+    cd my-plugin-or-theme-directory
+    ```
+  </Step>
+
+  <Step title="Start the server">
+    Run the CLI with `npx`. No global install needed.
+
+    <CodeGroup>
+
+    ```bash Auto-detect (recommended)
+    npx @wp-playground/cli@latest start
+    ```
+
+    ```bash With auto-mount flag
+    npx @wp-playground/cli@latest server --auto-mount
+    ```
+
+    ```bash Specific versions
+    npx @wp-playground/cli@latest server --wp=6.8 --php=8.4
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Open WordPress in your browser">
+    The CLI prints the local URL (default `http://127.0.0.1:9400`) after boot. The `start` command also opens the browser automatically.
+  </Step>
+</Steps>
+
+## Commands
+
+The CLI exposes five top-level commands:
+
+| Command | Description |
+|---|---|
+| `start` | Simplified launcher. Auto-detects project type, persists sites in `~/.wordpress-playground/sites/`, and opens a browser. |
+| `server` | Advanced launcher with full manual control over every option. Best for CI/CD or custom configurations. |
+| `run-blueprint` | Execute a Blueprint JSON file without starting a web server. |
+| `build-snapshot` | Build a ZIP snapshot of a WordPress site based on a Blueprint. |
+| `php` | Run a PHP script directly. |
+
+<Tip>
+  Prefer `start` for day-to-day development. Use `server` when you need precise control over mounts, ports, or install modes.
+</Tip>
+
+### `start` vs `server`
+
+The `start` command is opinionated and persistent:
+
+- Auto-login is enabled by default.
+- The browser opens automatically.
+- Your WordPress files and SQLite database are stored in `~/.wordpress-playground/sites/<path-hash>/` between sessions.
+- Use `--reset` to delete the persisted site and start fresh.
+
+The `server` command is stateless by default. Files are written to an OS temporary directory and cleaned up automatically after two days.
+
+## Mounting local directories
+
+`@wp-playground/cli` mounts your local files into a virtual WordPress filesystem, giving you a live environment backed by your project sources.
+
+### Automatic detection with `--auto-mount`
+
+The `--auto-mount` flag (or the default behaviour of `start`) inspects the target directory and mounts it to the right location automatically:
+
+| Detection rule | Mount target |
+|---|---|
+| PHP file with `Plugin Name:` in its header | `wp-content/plugins/<dir>` |
+| `style.css` with `Theme Name:` in its header | `wp-content/themes/<dir>` |
+| Contains both `plugins/` and `themes/` subdirectories | `wp-content/` |
+| Contains a full WordPress installation | `/wordpress` |
+
+```bash
+cd my-plugin-directory
+npx @wp-playground/cli@latest server --auto-mount
+```
+
+You can also pass an explicit path to `--auto-mount`:
+
+```bash
+npx @wp-playground/cli@latest server --auto-mount=./path/to/my-plugin
+```
+
+### Manual mounts
+
+For full control, use `--mount` with the format `host-path:vfs-path`:
+
+```bash
+npx @wp-playground/cli@latest server \
+  --mount=.:/wordpress/wp-content/plugins/my-plugin
+```
+
+Mount multiple directories by repeating the flag:
+
+```bash
+npx @wp-playground/cli@latest server \
+  --mount=./plugin:/wordpress/wp-content/plugins/my-plugin \
+  --mount=./theme:/wordpress/wp-content/themes/my-theme
+```
+
+### Mounting before WordPress installation
+
+Use `--mount-before-install` to mount a directory before WordPress is installed. This lets you seed WordPress with your own files — useful for full-site or WP-CLI workflows:
+
+```bash
+npx @wp-playground/cli@latest server \
+  --mount-before-install=./my-local-site:/wordpress
+```
+
+<Note>
+  On Windows, the `host:vfs` format can cause issues with drive letters. Use
+  `--mount-dir` and `--mount-dir-before-install` instead, which accept host and
+  VFS paths as two separate arguments:
+
+  ```bash
+  npx @wp-playground/cli@latest server --mount-dir "C:\my-plugin" "/wordpress/wp-content/plugins/my-plugin"
+  ```
+</Note>
+
+### Data persistence
+
+| Scenario | Database location | Persisted? |
+|---|---|---|
+| `start` (default) | `~/.wordpress-playground/sites/<hash>/wordpress/wp-content/database/.ht.sqlite` | Yes |
+| `server` with `wp-content` auto-mount | `<project>/wp-content/database/.ht.sqlite` | Yes |
+| `server` with plugin/theme only | OS temp dir — removed after ~2 days | No |
+
+To persist your database when developing a plugin or theme with `server`, mount the whole `wp-content` directory:
+
+```bash
+npx @wp-playground/cli@latest server \
+  --mount=./wp-content:/wordpress/wp-content
+```
+
+## Working with Blueprints
+
+[Blueprints](/blueprints/overview) are JSON files that declare the initial state of a WordPress site — installed plugins, themes, options, login state, and more.
+
+Create a Blueprint file and pass it with `--blueprint`:
+
+```json my-blueprint.json
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "landingPage": "/wp-admin/post-new.php",
+  "steps": [
+    {
+      "step": "installPlugin",
+      "pluginZipFile": {
+        "resource": "wordpress.org/plugins",
+        "slug": "gutenberg"
+      },
+      "options": {
+        "activate": true
+      }
+    },
+    {
+      "step": "login",
+      "username": "admin",
+      "password": "password"
+    }
+  ]
+}
+```
+
+```bash
+npx @wp-playground/cli@latest server --blueprint=./my-blueprint.json
+```
+
+Use `run-blueprint` when you only need to execute steps without a running server (for example, in CI):
+
+```bash
+npx @wp-playground/cli@latest run-blueprint --blueprint=./my-blueprint.json
+```
+
+Use `build-snapshot` to produce a ZIP archive of the resulting site:
+
+```bash
+npx @wp-playground/cli@latest build-snapshot \
+  --blueprint=./my-blueprint.json \
+  --outfile=wordpress.zip
+```
+
+## `server` flag reference
+
+All flags below apply to the `server` command. Many are also available on `run-blueprint` and `build-snapshot`.
+
+### Server options
+
+<ParamField path="--port" type="number" default="9400">
+  Port number for the HTTP server.
+</ParamField>
+
+<ParamField path="--site-url" type="string" default="http://127.0.0.1:{port}">
+  Override the WordPress site URL.
+</ParamField>
+
+<ParamField path="--workers" type="string" default="min(6, cpus-1)">
+  Number of request-handling worker threads. Pass a positive integer or `auto`
+  to use one worker per CPU core minus one. Raise this value for multi-client
+  workloads such as parallel end-to-end test suites.
+</ParamField>
+
+### WordPress and PHP
+
+<ParamField path="--wp" type="string" default="latest">
+  WordPress version. Accepts `latest`, `beta`, `trunk`, `nightly`, a numeric
+  version (`6.7`, `6.0.1`), or a direct ZIP URL.
+</ParamField>
+
+<ParamField path="--php" type="string" default="8.3">
+  PHP version. Choices: `8.5`, `8.4`, `8.3`, `8.2`, `8.1`, `8.0`, `7.4`.
+</ParamField>
+
+<ParamField path="--wordpress-install-mode" type="string" default="download-and-install">
+  Controls how WordPress is prepared before boot. Options:
+
+  - `download-and-install` — download a fresh copy and install it (default)
+  - `install-from-existing-files` — install using files you have already mounted
+  - `install-from-existing-files-if-needed` — same, but skip setup when an existing site is detected
+  - `do-not-attempt-installing` — never download or install WordPress
+</ParamField>
+
+<ParamField path="--skip-sqlite-setup" type="boolean" default="false">
+  Skip the SQLite integration plugin setup to allow WordPress to use MySQL instead.
+</ParamField>
+
+### Mounting
+
+<ParamField path="--auto-mount" type="string">
+  Automatically detect and mount the given directory (or the current working
+  directory if no path is provided) as a plugin, theme, `wp-content`, or full
+  WordPress installation.
+</ParamField>
+
+<ParamField path="--mount" type="string">
+  Mount a local directory (repeatable). Format: `host-path:vfs-path`.
+</ParamField>
+
+<ParamField path="--mount-before-install" type="string">
+  Mount a local directory before WordPress installation (repeatable). Format: `host-path:vfs-path`.
+</ParamField>
+
+<ParamField path="--mount-dir" type="string">
+  Alias for `--mount` using two separate path arguments instead of a colon-delimited string (repeatable).
+</ParamField>
+
+<ParamField path="--mount-dir-before-install" type="string">
+  Alias for `--mount-before-install` using two separate path arguments (repeatable).
+</ParamField>
+
+<ParamField path="--follow-symlinks" type="boolean" default="false">
+  Automatically mount symlinked directories and files encountered in mounted directories.
+
+  <Warning>
+    Following symlinks exposes files outside mounted directories to Playground and is a potential security risk.
+  </Warning>
+</ParamField>
+
+### Authentication and Blueprints
+
+<ParamField path="--login" type="boolean" default="false">
+  Automatically log the user in as an administrator after boot.
+</ParamField>
+
+<ParamField path="--blueprint" type="string">
+  Path to a Blueprint JSON file to execute on startup.
+</ParamField>
+
+<ParamField path="--blueprint-may-read-adjacent-files" type="boolean" default="false">
+  Consent flag: allow `bundled` resources in a local Blueprint to read files in the same directory as the Blueprint file.
+</ParamField>
+
+### Tooling
+
+<ParamField path="--phpmyadmin" type="string">
+  Install phpMyAdmin for database management. The URL is printed after boot.
+  Optionally provide a custom path (default: `/phpmyadmin`).
+</ParamField>
+
+<ParamField path="--xdebug" type="boolean" default="false">
+  Enable Xdebug for step debugging.
+</ParamField>
+
+<ParamField path="--experimental-unsafe-ide-integration" type="string">
+  Set up Xdebug path mappings in your IDE config. Accepts `vscode` or
+  `phpstorm`. Caution: modifies IDE configuration files.
+</ParamField>
+
+### Logging and debugging
+
+<ParamField path="--verbosity" type="string" default="normal">
+  Log level. Choices: `quiet`, `normal`, `debug`.
+</ParamField>
+
+<ParamField path="--debug" type="boolean" default="false">
+  Print the PHP error log if an error occurs during boot. Deprecated — use `--verbosity=debug` instead.
+</ParamField>
+
+### PHP constants
+
+<ParamField path="--define" type="string">
+  Define a PHP string constant (repeatable). Format: `NAME value`.
+
+  Example: `--define API_KEY secret`
+</ParamField>
+
+<ParamField path="--define-bool" type="string">
+  Define a PHP boolean constant (repeatable). Value must be `true`, `false`, `1`, or `0`.
+
+  Example: `--define-bool WP_DEBUG true`
+</ParamField>
+
+<ParamField path="--define-number" type="string">
+  Define a PHP number constant (repeatable). Format: `NAME value`.
+
+  Example: `--define-number LIMIT 100`
+</ParamField>
+
+### Internal cookie store
+
+<ParamField path="--internal-cookie-store" type="boolean" default="false">
+  Enable Playground's internal cookie handling. When active, an `HttpCookieStore`
+  persists cookies across requests. When disabled, cookies are managed externally
+  (for example by a browser).
+</ParamField>
+
+## Programmatic usage
+
+You can drive the CLI from JavaScript or TypeScript using the exported `runCLI` function. This is useful for integrating WordPress into end-to-end test suites.
+
+```typescript
+import { runCLI, RunCLIServer } from '@wp-playground/cli';
+
+const cliServer: RunCLIServer = await runCLI({
+  command: 'server',
+  php: '8.3',
+  wp: 'latest',
+  login: true,
+});
+
+console.log(cliServer.serverUrl);
+
+// Clean up when done
+await cliServer[Symbol.asyncDispose]();
+```
+
+`RunCLIServer` exposes a `serverUrl` string, a `playground` proxy to the underlying worker, and an `asyncDispose` method for graceful shutdown. It implements the `AsyncDisposable` protocol, so you can use it with the `await using` syntax in environments that support it.
+
+## Getting help
+
+Run `--help` at any time to list all available commands and flags:
+
+```bash
+npx @wp-playground/cli@latest --help
+npx @wp-playground/cli@latest server --help
+```

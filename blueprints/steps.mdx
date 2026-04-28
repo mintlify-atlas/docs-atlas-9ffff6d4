@@ -1,0 +1,633 @@
+---
+title: "Blueprint steps: complete API reference for all step types"
+description: "Complete reference for all Blueprint step types, grouped by category, with parameters and JSON code examples for each available step."
+---
+
+The `steps` array is where most of the Blueprint's work happens. Each entry is an object with a `step` property that identifies the step type, plus any additional parameters that step requires. Steps run sequentially in the order they appear in the array.
+
+```json
+{
+  "steps": [
+    { "step": "login", "username": "admin" },
+    {
+      "step": "installPlugin",
+      "pluginData": { "resource": "wordpress.org/plugins", "slug": "gutenberg" }
+    }
+  ]
+}
+```
+
+For an interactive way to build Blueprints, see the [Blueprints Builder](https://playground.wordpress.net/builder/builder.html) or the community [Step Library](https://akirk.github.io/playground-step-library/).
+
+---
+
+## Plugin and theme management
+
+<AccordionGroup>
+  <Accordion title="installPlugin">
+    Installs a WordPress plugin. The plugin source can be a WordPress.org slug, a ZIP URL, a Git repository directory, or a bundled file. By default the plugin is activated after installation.
+
+    <ParamField body="step" type='"installPlugin"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="pluginData" type="FileReference | DirectoryReference" required>
+      The plugin source. Accepts any [resource reference](/blueprints/resources): `wordpress.org/plugins`, `url`, `git:directory`, `bundled`, `literal`, or `vfs`.
+    </ParamField>
+    <ParamField body="options" type="object">
+      <ParamField body="activate" type="boolean" default="true">
+        Whether to activate the plugin after installing it.
+      </ParamField>
+      <ParamField body="targetFolderName" type="string">
+        Override the folder name used inside `wp-content/plugins/`. Defaults to the name inferred from `pluginData`.
+      </ParamField>
+    </ParamField>
+    <ParamField body="ifAlreadyInstalled" type='"overwrite" | "skip" | "error"'>
+      What to do if the plugin folder already exists. Defaults to overwriting.
+    </ParamField>
+
+    ```json
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "wordpress.org/plugins",
+        "slug": "gutenberg"
+      },
+      "options": {
+        "activate": true
+      }
+    }
+    ```
+
+    Install from a Git repository subdirectory:
+
+    ```json
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "git:directory",
+        "url": "https://github.com/WordPress/block-development-examples",
+        "ref": "HEAD",
+        "path": "plugins/data-basics-59c8f8"
+      },
+      "options": {
+        "activate": true,
+        "targetFolderName": "data-basics"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="installTheme">
+    Installs a WordPress theme. The theme source can be a WordPress.org slug, a ZIP URL, a Git repository directory, or a bundled file. By default the theme is activated after installation.
+
+    <ParamField body="step" type='"installTheme"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="themeData" type="FileReference | DirectoryReference" required>
+      The theme source. Accepts any [resource reference](/blueprints/resources).
+    </ParamField>
+    <ParamField body="options" type="object">
+      <ParamField body="activate" type="boolean" default="true">
+        Whether to activate the theme after installing it.
+      </ParamField>
+      <ParamField body="importStarterContent" type="boolean" default="false">
+        Whether to import the theme's starter content after installation.
+      </ParamField>
+      <ParamField body="targetFolderName" type="string">
+        Override the folder name used inside `wp-content/themes/`. Defaults to the name inferred from `themeData`.
+      </ParamField>
+    </ParamField>
+    <ParamField body="ifAlreadyInstalled" type='"overwrite" | "skip" | "error"'>
+      What to do if the theme folder already exists.
+    </ParamField>
+
+    ```json
+    {
+      "step": "installTheme",
+      "themeData": {
+        "resource": "wordpress.org/themes",
+        "slug": "pendant"
+      },
+      "options": {
+        "activate": true,
+        "importStarterContent": true
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="activatePlugin">
+    Activates an already-installed plugin. Use this when you have installed a plugin without activating it, or when you need to activate a plugin that was installed outside of a Blueprint.
+
+    <ParamField body="step" type='"activatePlugin"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="pluginPath" type="string" required>
+      Absolute path to the plugin directory (e.g. `/wordpress/wp-content/plugins/my-plugin`) or the plugin entry file relative to the plugins directory (e.g. `my-plugin/my-plugin.php`).
+    </ParamField>
+    <ParamField body="pluginName" type="string">
+      Display name shown in the progress indicator. Optional.
+    </ParamField>
+
+    ```json
+    {
+      "step": "activatePlugin",
+      "pluginPath": "/wordpress/wp-content/plugins/gutenberg",
+      "pluginName": "Gutenberg"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="activateTheme">
+    Activates an already-installed theme by its folder name inside `wp-content/themes/`.
+
+    <ParamField body="step" type='"activateTheme"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="themeFolderName" type="string" required>
+      The theme's folder name inside `wp-content/themes/`, e.g. `storefront`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "activateTheme",
+      "themeFolderName": "storefront"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Content
+
+<AccordionGroup>
+  <Accordion title="importWxr">
+    Imports a WXR (WordPress eXtended RSS) file, which is the standard WordPress export format. The file is fetched using the provided resource reference, then processed by the WordPress importer.
+
+    <ParamField body="step" type='"importWxr"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="file" type="FileReference" required>
+      The WXR file to import. Accepts any file-based [resource reference](/blueprints/resources).
+    </ParamField>
+
+    ```json
+    {
+      "step": "importWxr",
+      "file": {
+        "resource": "url",
+        "url": "https://your-site.com/starter-content.wxr"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="importWordPressFiles">
+    Imports a ZIP archive of WordPress files (e.g. a full `wp-content` export) into the Playground filesystem.
+
+    <ParamField body="step" type='"importWordPressFiles"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="wordPressFilesZip" type="FileReference" required>
+      A ZIP file containing WordPress files to import.
+    </ParamField>
+
+    ```json
+    {
+      "step": "importWordPressFiles",
+      "wordPressFilesZip": {
+        "resource": "url",
+        "url": "https://your-site.com/wordpress-export.zip"
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Authentication
+
+<AccordionGroup>
+  <Accordion title="login">
+    Logs in to Playground as the specified user. Under the hood this sets the `PLAYGROUND_AUTO_LOGIN_AS_USER` constant, which a mu-plugin uses to authenticate the user on the first page load.
+
+    <ParamField body="step" type='"login"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="username" type="string" default='"admin"'>
+      The WordPress username to log in as.
+    </ParamField>
+
+    <Note>
+      The `password` field is deprecated and ignored. Authentication relies only on `username`.
+    </Note>
+
+    ```json
+    {
+      "step": "login",
+      "username": "admin"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## PHP execution
+
+<AccordionGroup>
+  <Accordion title="runPHP">
+    Runs a PHP code string in the Playground environment. To use WordPress functions, load `wp-load.php` at the start of your code.
+
+    <ParamField body="step" type='"runPHP"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="code" type="string" required>
+      The PHP code to execute. Must begin with `<?php`. Use an absolute path when requiring `wp-load.php`: `/wordpress/wp-load.php`.
+    </ParamField>
+
+    <Warning>
+      Always use an absolute path for `wp-load.php`. Relative paths like `wordpress/wp-load.php` no longer work because the working directory changed to `/wordpress`.
+    </Warning>
+
+    ```json
+    {
+      "step": "runPHP",
+      "code": "<?php require_once '/wordpress/wp-load.php'; wp_insert_post(['post_title' => 'Hello', 'post_status' => 'publish', 'post_author' => 1]);"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="runPHPWithOptions">
+    Runs PHP with full control over the PHP runtime options, including request method, headers, body, environment variables, and more. Use this when `runPHP` doesn't provide enough control.
+
+    <ParamField body="step" type='"runPHPWithOptions"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="options" type="PHPRunOptions" required>
+      Options passed directly to `playground.run()`. Supports `code`, `scriptPath`, `method`, `body`, `headers`, `env`, and other PHP runtime options.
+    </ParamField>
+
+    ```json
+    {
+      "step": "runPHPWithOptions",
+      "options": {
+        "code": "<?php require_once '/wordpress/wp-load.php'; update_option('blogname', file_get_contents('php://input'));?>",
+        "body": "My New Blog Name"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="wp-cli">
+    Runs a WP-CLI command. Requires either `"extraLibraries": ["wp-cli"]` in the Blueprint, or at least one other `wp-cli` step (which triggers automatic WP-CLI installation).
+
+    <ParamField body="step" type='"wp-cli"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="command" type="string | string[]" required>
+      The WP-CLI command to run. Must start with `wp`. Can be a string (parsed by Playground's shell splitter) or a pre-split array of arguments.
+    </ParamField>
+    <ParamField body="wpCliPath" type="string">
+      Custom path to `wp-cli.phar`. Defaults to `/tmp/wp-cli.phar`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "wp-cli",
+      "command": "wp post create --post_title='Test post' --post_excerpt='Some content'"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## File system
+
+<AccordionGroup>
+  <Accordion title="writeFile">
+    Writes a string, binary data, or a file resource to a path in the Playground virtual filesystem. Creates the `mu-plugins` directory automatically if writing to that location.
+
+    <ParamField body="step" type='"writeFile"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="path" type="string" required>
+      Absolute path of the file to write, e.g. `/wordpress/wp-content/mu-plugins/my-plugin.php`.
+    </ParamField>
+    <ParamField body="data" type="FileReference | string | Uint8Array" required>
+      The file content. Can be a plain string, binary data, or any [resource reference](/blueprints/resources).
+    </ParamField>
+
+    ```json
+    {
+      "step": "writeFile",
+      "path": "/wordpress/wp-content/mu-plugins/rewrite.php",
+      "data": "<?php add_action('after_setup_theme', function() { global $wp_rewrite; $wp_rewrite->set_permalink_structure('/%postname%/'); $wp_rewrite->flush_rules(); });"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="writeFiles">
+    Writes an entire directory structure (from a `DirectoryReference` resource) into the Playground filesystem.
+
+    <ParamField body="step" type='"writeFiles"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="directoryPath" type="string" required>
+      The target directory path in the Playground filesystem.
+    </ParamField>
+    <ParamField body="filesDirectory" type="DirectoryReference" required>
+      A directory resource containing the files to write.
+    </ParamField>
+
+    ```json
+    {
+      "step": "writeFiles",
+      "directoryPath": "/wordpress/wp-content/plugins/my-plugin",
+      "filesDirectory": {
+        "resource": "url",
+        "url": "https://example.com/my-plugin-files.zip"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="cp">
+    Copies a file from one path to another within the Playground filesystem.
+
+    <ParamField body="step" type='"cp"' required>The step identifier.</ParamField>
+    <ParamField body="fromPath" type="string" required>Absolute source path.</ParamField>
+    <ParamField body="toPath" type="string" required>Absolute destination path.</ParamField>
+
+    ```json
+    {
+      "step": "cp",
+      "fromPath": "/wordpress/wp-content/plugins/my-plugin/config.sample.php",
+      "toPath": "/wordpress/wp-content/plugins/my-plugin/config.php"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="mv">
+    Moves (renames) a file or directory within the Playground filesystem.
+
+    <ParamField body="step" type='"mv"' required>The step identifier.</ParamField>
+    <ParamField body="fromPath" type="string" required>Absolute source path.</ParamField>
+    <ParamField body="toPath" type="string" required>Absolute destination path.</ParamField>
+
+    ```json
+    {
+      "step": "mv",
+      "fromPath": "/wordpress/wp-content/themes/old-name",
+      "toPath": "/wordpress/wp-content/themes/new-name"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="rm">
+    Removes a file from the Playground filesystem.
+
+    <ParamField body="step" type='"rm"' required>The step identifier.</ParamField>
+    <ParamField body="path" type="string" required>Absolute path to the file to remove.</ParamField>
+
+    ```json
+    { "step": "rm", "path": "/wordpress/wp-content/plugins/hello.php" }
+    ```
+  </Accordion>
+
+  <Accordion title="mkdir">
+    Creates a directory in the Playground filesystem. Does not fail if the directory already exists.
+
+    <ParamField body="step" type='"mkdir"' required>The step identifier.</ParamField>
+    <ParamField body="path" type="string" required>Absolute path of the directory to create.</ParamField>
+
+    ```json
+    { "step": "mkdir", "path": "/wordpress/wp-content/uploads/2024" }
+    ```
+  </Accordion>
+
+  <Accordion title="rmdir">
+    Removes a directory from the Playground filesystem.
+
+    <ParamField body="step" type='"rmdir"' required>The step identifier.</ParamField>
+    <ParamField body="path" type="string" required>Absolute path of the directory to remove.</ParamField>
+
+    ```json
+    { "step": "rmdir", "path": "/wordpress/wp-content/themes/unused-theme" }
+    ```
+  </Accordion>
+
+  <Accordion title="unzip">
+    Extracts a ZIP archive to a specified directory in the Playground filesystem.
+
+    <ParamField body="step" type='"unzip"' required>The step identifier.</ParamField>
+    <ParamField body="zipFile" type="FileReference" required>The ZIP file to extract. Accepts any [resource reference](/blueprints/resources).</ParamField>
+    <ParamField body="extractToPath" type="string" required>Absolute path of the directory to extract into.</ParamField>
+
+    ```json
+    {
+      "step": "unzip",
+      "zipFile": {
+        "resource": "url",
+        "url": "https://example.com/assets.zip"
+      },
+      "extractToPath": "/wordpress/wp-content/uploads"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## WordPress configuration
+
+<AccordionGroup>
+  <Accordion title="defineWpConfigConsts">
+    Defines PHP constants in `wp-config.php`. Useful for enabling `WP_DEBUG`, disabling the fatal error handler, or setting any other WordPress constant.
+
+    <ParamField body="step" type='"defineWpConfigConsts"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="consts" type="Record<string, unknown>" required>
+      An object mapping constant names to their values.
+    </ParamField>
+    <ParamField body="method" type='"rewrite-wp-config" | "define-before-run"' default='"define-before-run"'>
+      How to define the constants. `rewrite-wp-config` edits `wp-config.php` on disk; `define-before-run` injects them at runtime without touching the file.
+    </ParamField>
+
+    ```json
+    {
+      "step": "defineWpConfigConsts",
+      "consts": {
+        "WP_DEBUG": true,
+        "WP_DEBUG_DISPLAY": true,
+        "WP_DISABLE_FATAL_ERROR_HANDLER": true
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="setSiteOptions">
+    Sets WordPress site options. Equivalent to calling `update_option()` for each key in the `options` object.
+
+    <ParamField body="step" type='"setSiteOptions"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="options" type="Record<string, unknown>" required>
+      Key-value pairs to pass to `update_option()`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "setSiteOptions",
+      "options": {
+        "blogname": "My Playground",
+        "blogdescription": "A fresh WordPress site"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="defineSiteUrl">
+    Sets the WordPress site URL and home URL constants. Use this when you need Playground to use a specific URL, for instance when testing URL-dependent functionality.
+
+    <ParamField body="step" type='"defineSiteUrl"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="siteUrl" type="string" required>
+      The site URL to define.
+    </ParamField>
+
+    ```json
+    {
+      "step": "defineSiteUrl",
+      "siteUrl": "https://playground.wordpress.net"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="setSiteLanguage">
+    Sets the WordPress site language.
+
+    <ParamField body="step" type='"setSiteLanguage"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="language" type="string" required>
+      A WordPress locale code, e.g. `de_DE`, `fr_FR`, `es_ES`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "setSiteLanguage",
+      "language": "de_DE"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="enableMultisite">
+    Converts the Playground WordPress installation to a multisite network.
+
+    <ParamField body="step" type='"enableMultisite"' required>
+      The step identifier.
+    </ParamField>
+
+    ```json
+    { "step": "enableMultisite" }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Database
+
+<AccordionGroup>
+  <Accordion title="runSql">
+    Runs a SQL query against the WordPress database.
+
+    <ParamField body="step" type='"runSql"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="sql" type="FileReference" required>
+      A file resource containing the SQL to execute. Accepts any [resource reference](/blueprints/resources).
+    </ParamField>
+
+    ```json
+    {
+      "step": "runSql",
+      "sql": {
+        "resource": "literal",
+        "name": "setup.sql",
+        "contents": "INSERT INTO wp_options (option_name, option_value) VALUES ('my_option', 'my_value');"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="updateUserMeta">
+    Updates WordPress user meta. Equivalent to calling `update_user_meta()` for each key in `meta`.
+
+    <ParamField body="step" type='"updateUserMeta"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="meta" type="Record<string, unknown>" required>
+      Key-value pairs to pass to `update_user_meta()`.
+    </ParamField>
+    <ParamField body="userId" type="number" required>
+      The ID of the user to update.
+    </ParamField>
+
+    ```json
+    {
+      "step": "updateUserMeta",
+      "meta": {
+        "first_name": "Jane",
+        "last_name": "Doe"
+      },
+      "userId": 1
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="resetData">
+    Resets the WordPress database and filesystem to a clean state. Use this in Blueprints that need a guaranteed-fresh starting point regardless of any prior state.
+
+    <ParamField body="step" type='"resetData"' required>
+      The step identifier.
+    </ParamField>
+
+    ```json
+    { "step": "resetData" }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## HTTP
+
+<AccordionGroup>
+  <Accordion title="request">
+    Makes an internal HTTP request to the Playground WordPress instance. Useful for triggering WordPress hooks or endpoints as part of Blueprint setup.
+
+    <ParamField body="step" type='"request"' required>
+      The step identifier.
+    </ParamField>
+    <ParamField body="request" type="object" required>
+      The request to make. Supports `url`, `method`, `headers`, and `body`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "request",
+      "request": {
+        "url": "/wp-json/wp/v2/posts",
+        "method": "GET"
+      }
+    }
+    ```
+  </Accordion>
+</AccordionGroup>

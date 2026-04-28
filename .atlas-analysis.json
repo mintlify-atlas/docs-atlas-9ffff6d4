@@ -1,28 +1,11 @@
 {
-  "$schema": "https://mintlify.com/docs.json",
-  "name": "WordPress Playground",
+  "projectType": "framework",
+  "projectName": "WordPress Playground",
+  "projectDescription": "Run WordPress entirely in the browser via WebAssembly PHP, enabling zero-setup WordPress environments for development, testing, and demos.",
   "theme": "palm",
-  "colors": {
-    "primary": "#040404",
-    "light": "#34343c",
-    "dark": "#040404"
-  },
-  "favicon": "https://media.brand.dev/86f86f1c-4f0c-4adb-b722-bd42296776cf.png",
-  "logo": {
-    "light": "https://media.brand.dev/cbfaff1e-3aca-4811-abe0-0c463f1729fe.svg",
-    "dark": "https://media.brand.dev/cbfaff1e-3aca-4811-abe0-0c463f1729fe.svg"
-  },
-  "navbar": {
-    "primary": {
-      "type": "github",
-      "href": "https://github.com/WordPress/wordpress-playground"
-    }
-  },
-  "footer": {
-    "socials": {
-      "github": "https://github.com/WordPress/wordpress-playground"
-    }
-  },
+  "primaryColor": "#040404",
+  "lightColor": "#34343c",
+  "darkColor": null,
   "navigation": {
     "tabs": [
       {
@@ -103,5 +86,31 @@
         ]
       }
     ]
-  }
+  },
+  "keyFeatures": [
+    "Run WordPress entirely in the browser via WebAssembly (no server required)",
+    "Blueprints: declarative JSON configs to define WordPress site states and steps",
+    "JavaScript API (startPlaygroundWeb) for embedding Playground in iframes",
+    "Query API for controlling Playground via URL parameters",
+    "CLI tool (@wp-playground/cli) for zero-setup local WordPress development",
+    "Support for multiple PHP versions (7.4–8.5) compiled to WASM",
+    "SQLite integration (no MySQL required)",
+    "Offline support via service workers",
+    "Node.js runtime support (@php-wasm/node) alongside browser runtime",
+    "Blueprint steps: installPlugin, installTheme, login, runPHP, wp-cli, and more"
+  ],
+  "publicApiSurface": [
+    "startPlaygroundWeb(options: StartPlaygroundOptions): Promise<PlaygroundClient>",
+    "compileBlueprintV1(blueprint, options): CompiledBlueprintV1",
+    "runBlueprintV1Steps(playground, compiledBlueprint, options): Promise<void>",
+    "validateBlueprint(blueprint): BlueprintValidationResult",
+    "runCLI(options): Promise<RunCLIServer>",
+    "Blueprint steps: installPlugin, installTheme, activatePlugin, activateTheme, login, runPHP, runPHPWithOptions, runWPCLI, writeFile, writeFiles, cp, mv, rm, mkdir, importWxr, exportWxr, defineWpConfigConsts, setSiteLanguage, enableMultisite, resetData",
+    "@wp-playground/client npm package",
+    "@wp-playground/cli npm package",
+    "@php-wasm/web npm package (browser PHP runtime)",
+    "@php-wasm/node npm package (Node.js PHP runtime)",
+    "@php-wasm/universal (abstract PHP interface)",
+    "Query API parameters: blueprint-url, php, wp, login, url, networking"
+  ]
 }

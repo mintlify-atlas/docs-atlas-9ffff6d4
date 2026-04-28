@@ -1,0 +1,73 @@
+---
+title: "Choosing the right WordPress Playground API to use"
+description: "Compare the Query API, Blueprints API, and JavaScript API to pick the right tool for embedding and controlling WordPress Playground."
+---
+
+WordPress Playground exposes three levels of API, each suited to a different level of control. The Query API lets you configure a Playground instance entirely through URL parameters — no code required. The Blueprints API gives you a JSON-based configuration format for installing plugins, running PHP, and setting up complex site states. The JavaScript API gives you full programmatic control over a Playground instance embedded inside an `<iframe>`, including live filesystem access, HTTP request interception, and navigation.
+
+## API comparison
+
+<CardGroup cols={3}>
+  <Card title="Query API" icon="link" href="/developers/query-api">
+    Configure Playground through URL query parameters. No JavaScript required. Best for shareable links, tutorial "Try it" buttons, and simple `<iframe>` embeds.
+  </Card>
+  <Card title="Blueprints API" icon="file-code" href="/blueprints/overview">
+    Declare a full WordPress site state in a JSON file. Install plugins and themes, run PHP, create posts, and more — all before the user sees the page.
+  </Card>
+  <Card title="JavaScript API" icon="code" href="/developers/javascript-api">
+    Embed Playground in your app and control it programmatically. Read and write files, make HTTP requests, navigate pages, and listen to events in real time.
+  </Card>
+</CardGroup>
+
+## When to use each API
+
+| Scenario | Recommended API |
+|---|---|
+| Shareable link to a pre-configured Playground | Query API |
+| "Try it" button in a tutorial or blog post | Query API |
+| Simple `<iframe>` embed with a specific plugin or theme | Query API |
+| Pre-install plugins, themes, and content before load | Blueprints API |
+| Run PHP code as part of site setup | Blueprints API |
+| Full programmatic control after Playground loads | JavaScript API |
+| Read or write files inside WordPress at runtime | JavaScript API |
+| Embed Playground in a React, Vue, or native web app | JavaScript API |
+| Node.js scripting or CI automation | JavaScript API |
+
+## The iframe model
+
+All three APIs work through the same underlying architecture. WordPress and PHP run inside a WebAssembly runtime hosted in an `<iframe>`. The `@wp-playground/client` library communicates with that iframe over `postMessage`.
+
+```
+Your page / app
+    ↓ startPlaygroundWeb()
+@wp-playground/client
+    ↓ postMessage
+remote.html  (iframe — runs PHP + WordPress in WASM)
+```
+
+The Query API and Blueprints API configure what goes into the iframe URL. The JavaScript API gives you a live handle to the running instance after boot.
+
+<Note>
+  The site at `https://playground.wordpress.net` is a community resource with no uptime guarantee. For production use, [host your own Playground instance](https://wordpress.github.io/wordpress-playground/developers/architecture/host-your-own-playground).
+</Note>
+
+## Browser vs. Node.js
+
+| API | Browser | Node.js |
+|---|---|---|
+| Query API | Yes | No |
+| Blueprints API | Yes | Yes |
+| JavaScript API | Yes | Yes |
+
+The Query API is URL-based and only applies to browser embeds. The Blueprints and JavaScript APIs work in both environments.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Query API reference" icon="search" href="/developers/query-api">
+    Full list of supported URL parameters with examples.
+  </Card>
+  <Card title="JavaScript API reference" icon="brackets-curly" href="/developers/javascript-api">
+    Install the npm package and start controlling Playground programmatically.
+  </Card>
+</CardGroup>

@@ -1,0 +1,150 @@
+---
+title: "Code contributions to WordPress Playground"
+description: "Set up a local development environment, learn the project conventions, and submit pull requests to the WordPress Playground codebase."
+---
+
+WordPress Playground is managed on GitHub in two repositories: the [main repository](https://github.com/WordPress/wordpress-playground) for the core runtime and website, and [Playground Tools](https://github.com/WordPress/playground-tools) for plugins, the VS Code extension, and related tooling. The steps below apply to both.
+
+Browse [open issues](https://github.com/WordPress/wordpress-playground/issues) to find something to work on. Issues labeled [`Good First Issue`](https://github.com/wordpress/wordpress-playground/issues?q=is%3Aopen+is%3Aissue+label%3A%22Good+First+Issue%22) are a recommended starting point for first-time contributors.
+
+## Setting up the development environment
+
+<Steps>
+  <Step title="Fork and clone the repository">
+    [Fork the repository](https://github.com/WordPress/wordpress-playground/fork) on GitHub, then clone your fork. The fast-clone command below fetches only the latest revision of the `trunk` branch and includes required submodules:
+
+    ```bash
+    git clone -b trunk --single-branch --depth 1 --recurse-submodules \
+      git@github.com:YOUR-GITHUB-USERNAME/wordpress-playground.git
+    cd wordpress-playground
+    ```
+  </Step>
+  <Step title="Use the required Node.js version">
+    The project requires **Node.js 22** (defined in `.nvmrc`) and npm ≥ 10.2.3. If you use `nvm`, run:
+
+    ```bash
+    nvm use
+    ```
+
+    Without the correct Node.js version, commands may fail or produce unexpected results.
+  </Step>
+  <Step title="Install dependencies">
+    ```bash
+    npm install
+    ```
+  </Step>
+  <Step title="Start the development server">
+    ```bash
+    npm run dev
+    ```
+
+    This starts the website at [http://127.0.0.1:5400/](http://127.0.0.1:5400/) and live-reloads on every `.ts` file change. You do not need to restart the server between changes.
+  </Step>
+</Steps>
+
+<Tip>
+  **Linux file watcher limit** — If you see `ENOSPC: System limit for number of file watchers reached`, increase the inotify limit:
+
+  ```bash
+  sudo sysctl fs.inotify.max_user_watches=131070
+  sudo sysctl -p
+  ```
+</Tip>
+
+## Common development commands
+
+<CodeGroup>
+
+```bash Development
+npm run dev              # Start website dev server at localhost:5400
+npm run dev:docs         # Start the documentation site locally
+```
+
+```bash Building
+npm run build            # Build all packages
+npm run build:website    # Build the main website only
+npm run build:docs       # Build the documentation site only
+npx nx build <package>   # Build a single package
+```
+
+```bash Testing
+npm test                                           # Run all tests
+npx nx test <package>                              # Test a specific package
+npx nx test <package> --testFile=<file>.spec.ts    # Run a single test file
+npx nx e2e playground-website                      # Run end-to-end tests
+```
+
+```bash Linting and formatting
+npm run lint                   # Lint all packages
+npm run typecheck              # Type-check all packages
+npm run format                 # Format code with Prettier
+npm run format:uncommitted     # Format only uncommitted files
+```
+
+</CodeGroup>
+
+## Monorepo architecture
+
+The project is an **NX monorepo** with npm workspaces organised into two main layers:
+
+- **`packages/php-wasm/*`** — packages prefixed `@php-wasm/<name>`: the Emscripten-compiled PHP runtime for web and Node.js.
+- **`packages/playground/*`** — packages prefixed `@wp-playground/<name>`: WordPress-specific tooling, client libraries, and applications.
+
+Supporting packages include `packages/docs/` (Docusaurus documentation site), `packages/nx-extensions/` (custom NX executors), and `packages/meta/` (ESLint plugin, changelog tooling).
+
+The core communication model is an iframe-based isolation pattern:
+
+```
+@wp-playground/client (parent window)
+    ↓ postMessage API
+@wp-playground/remote (iframe, runs PHP)
+    ↓
+@php-wasm/web (browser PHP runtime)
+    ↓
+@php-wasm/universal (shared abstract interface)
+```
+
+## Development conventions
+
+### TypeScript
+
+- **Explicit type imports**: Always write `import type { Foo } from 'bar'` — required for Node.js type stripping.
+- **No parameter properties**: TypeScript parameter properties are not supported by Node.js type stripping.
+- Module resolution is `bundler` mode; target is ES2021 with ESNext modules.
+
+### Code style
+
+- **Comment length**: Maximum 100 characters per line, enforced by ESLint.
+- **No `console.log`**: Disallowed outside tests and `bin/` scripts.
+- **Function ordering**: Write the caller before the callee. When function A calls function B, A comes first in the file.
+- **Method ordering**: Public → protected → private. Respect function ordering within each visibility group.
+- **Path manipulation**: Never use ad-hoc string concatenation for file paths. Use POSIX utilities from `@php-wasm/util` (`joinPaths`, `dirname`, `basename`, `normalizePath`), not Node.js `path`, which can produce Windows-style separators.
+
+### Testing
+
+- Test files are co-located with their implementation as `*.spec.ts`.
+- Most packages use **Vitest**; some use Jest. Never skip failing tests — fix the code instead.
+
+```
+packages/[layer]/[package-name]/
+├── src/
+│   ├── index.ts           # Main entry point
+│   └── lib/
+│       ├── feature.ts
+│       └── feature.spec.ts  # Co-located test
+├── package.json
+└── project.json
+```
+
+## Submitting a pull request
+
+1. Create a branch from `trunk` and make your changes.
+2. Run `npm run format:uncommitted` to format changed files.
+3. Ensure `npm test` and `npm run typecheck` pass.
+4. Commit and push to your fork, then open a pull request against `trunk`.
+5. Describe any breaking changes clearly in the PR description — key downstream consumers include Telex, Studio, and wp-env.
+
+<Note>
+  Code formatting and linting run automatically in CI. You can also let the
+  formatter handle style — focus on the logic.
+</Note>

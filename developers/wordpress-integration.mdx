@@ -1,0 +1,138 @@
+---
+title: "How WordPress runs inside WordPress Playground"
+description: "How WordPress Playground installs WordPress into the WASM virtual filesystem, replaces MySQL with SQLite, and routes HTTP requests to PHP files."
+---
+
+WordPress is a PHP application that was designed to run on a traditional web server with a MySQL database. WordPress Playground makes it run entirely in the browser by replacing MySQL with SQLite, loading WordPress files into an in-memory virtual filesystem, and using a Service Worker to intercept HTTP requests and route them through the PHP WASM runtime.
+
+## SQLite instead of MySQL
+
+WordPress requires a relational database, but there is no WebAssembly build of MySQL that can run in a browser. WordPress Playground ships PHP with the [native SQLite PDO driver](https://www.php.net/manual/en/ref.pdo-sqlite.php) and uses SQLite as the database backend.
+
+WordPress itself only speaks MySQL, so a translation layer is needed. Playground uses the official [SQLite Database Integration](https://github.com/WordPress/sqlite-database-integration) plugin, which intercepts all MySQL queries from WordPress and rewrites them in SQLite dialect. The 2.0 release introduced a new translation layer informed by WordPress Playground's needs, enabling WordPress on SQLite to pass 99% of the WordPress unit test suite.
+
+<Note>
+The SQLite integration is loaded as a WordPress database drop-in. It lives at `wp-content/db.php` inside the virtual filesystem and is activated automatically when WordPress boots.
+</Note>
+
+## WordPress in the virtual filesystem
+
+WordPress files are loaded into the [Emscripten virtual filesystem](/developers/wasm-php#the-virtual-filesystem) at a well-known path. The `PHPRequestHandler` is configured with a `documentRoot` that points to the WordPress installation directory:
+
+```typescript
+import { PHP } from '@php-wasm/web';
+
+const php = await PHP.load('8.3', {
+  requestHandler: {
+    documentRoot: '/var/www/html',
+    absoluteUrl: 'http://127.0.0.1',
+  },
+});
+```
+
+The WordPress filesystem layout inside the virtual FS mirrors a standard WordPress installation:
+
+```
+/var/www/html/
+├── wp-admin/
+├── wp-content/
+│   ├── db.php          ← SQLite drop-in
+│   ├── plugins/
+│   └── themes/
+├── wp-includes/
+├── wp-config.php
+└── index.php
+```
+
+## Browser-optimised WordPress bundles
+
+Vanilla WordPress weighs around 70 MB. To reduce data transfer, Playground ships pre-built, browser-optimised WordPress releases stored in `packages/playground/wordpress-builds`. The bundler:
+
+<Steps>
+  <Step title="Install the SQLite drop-in">
+    Replaces the default MySQL database layer with the SQLite Database Integration plugin drop-in.
+  </Step>
+  <Step title="Run the installation wizard">
+    Executes the WordPress installation wizard so the database schema is already populated.
+  </Step>
+  <Step title="Minify and bundle">
+    Reduces the WordPress website size from about 70 MB to about 10 MB (or 5 MB compressed) and packages everything as a zip file.
+  </Step>
+</Steps>
+
+To build a new bundle:
+
+```bash
+npx nx bundle-wordpress playground-wordpress-builds --wp-version=6.6
+```
+
+This outputs:
+- `packages/playground/wordpress-builds/public/wp-6.6.zip` — zipped WordPress files
+- `packages/playground/wordpress-builds/public/wp-6.6/` — directory with static assets
+
+## How the PHP request handler maps URLs to PHP files
+
+The `PHPRequestHandler` class (in `@php-wasm/universal`) acts as a lightweight web server. When a request arrives from the Service Worker, the handler:
+
+1. Applies any configured URL rewrite rules to the request path.
+2. Resolves the resulting path to a filesystem path under `documentRoot`.
+3. If the path resolves to a directory, looks for `index.php` or `index.html`.
+4. Serves static files directly from the virtual filesystem.
+5. Executes `.php` files through the PHP WASM runtime and returns the output.
+
+WordPress's pretty-permalink rewrite rules are configured on the `PHPRequestHandler` instance so that URLs like `/blog/my-post/` are internally rewritten to `/index.php?p=123` before PHP executes.
+
+```typescript
+const php = await PHP.load('8.3', {
+  requestHandler: {
+    documentRoot: '/var/www/html',
+    absoluteUrl: 'http://127.0.0.1',
+    rewriteRules: [
+      // WordPress pretty permalinks
+      { match: /^(?!\/wp-(?:admin|content|includes))(.*)$/, replacement: '/index.php' },
+    ],
+  },
+});
+```
+
+### `$_SERVER` superglobal
+
+The handler populates the PHP `$_SERVER` superglobal before each request, including `DOCUMENT_ROOT`, `REQUEST_URI`, `SCRIPT_NAME`, `PHP_SELF`, `QUERY_STRING`, and `HTTPS`. This ensures WordPress functions like `home_url()`, `admin_url()`, and `get_permalink()` produce correct URLs.
+
+## wp-config.php constants
+
+The WordPress `wp-config.php` inside Playground sets constants appropriate for the in-browser environment:
+
+| Constant | Purpose |
+|---|---|
+| `ABSPATH` | Absolute filesystem path to the WordPress directory (e.g., `/var/www/html/`) |
+| `DB_ENGINE` | Set to `sqlite` to activate the SQLite drop-in |
+| `WP_HOME` / `WP_SITEURL` | Set to the scoped `absoluteUrl` of the `PHPRequestHandler` |
+| `WP_DEBUG` | Typically enabled to surface PHP errors |
+
+The [Blueprint step `defineWpConfigConsts`](/developers/blueprint-steps-reference) can add or override these constants programmatically without editing `wp-config.php` directly.
+
+## Persistent storage with OPFS
+
+By default, WordPress Playground stores everything in the Emscripten in-memory virtual filesystem. All data is lost when the browser tab is closed.
+
+For persistence, Playground supports the [Origin Private File System (OPFS)](https://developer.mozilla.org/en-US/docs/Web/API/File_System_API/Origin_private_file_system) API, which lets the virtual filesystem be backed by real browser storage. The `@wp-playground/storage` package provides filesystem backends for both IndexedDB (browser) and the native filesystem (Node.js).
+
+<Info>
+Persistent storage via OPFS is opt-in. Without it, each Playground session starts from a clean WordPress installation — ideal for sandboxed testing and demos.
+</Info>
+
+## WordPress in Node.js
+
+In Node.js, you typically mount WordPress from a real disk directory into the PHP virtual filesystem using Emscripten's NODEFS library:
+
+```typescript
+import { PHP, loadNodeRuntime } from '@php-wasm/node';
+
+const php = new PHP(await loadNodeRuntime('8.3'));
+
+// Mount a local WordPress directory into the virtual FS
+php.mount('/path/to/local/wordpress', '/var/www/html');
+```
+
+This approach is used by the Playground CLI (`@wp-playground/cli`) when you run `npx nx dev playground-cli server --auto-mount`.

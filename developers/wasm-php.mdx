@@ -1,0 +1,151 @@
+---
+title: "How PHP runs as WebAssembly inside the browser"
+description: "How WordPress Playground compiles PHP to WebAssembly with Emscripten, supports PHP 7.4–8.5, handles async execution, and manages the virtual filesystem."
+---
+
+WordPress Playground compiles the PHP interpreter to WebAssembly using [Emscripten](https://emscripten.org/), a drop-in replacement for a C compiler that targets the browser and Node.js instead of native machine code. The result is a static `.wasm` binary that can be loaded in any JavaScript environment without installing PHP on the host machine.
+
+## Compiling PHP with Emscripten
+
+The build pipeline lives in a [`Dockerfile`](https://github.com/WordPress/wordpress-playground/blob/trunk/packages/php-wasm/compile/Dockerfile) that was originally forked from [seanmorris/php-wasm](https://github.com/seanmorris/php-wasm). At a high level, the Dockerfile:
+
+<Steps>
+  <Step title="Install system dependencies">
+    Installs Linux build tools (`build-essential` and friends) and downloads the PHP source along with required libraries such as `sqlite3`.
+  </Step>
+  <Step title="Apply patches">
+    Applies a small set of patches to PHP — adjusting a function signature here, forcing a config variable there — to make it compile cleanly under Emscripten.
+  </Step>
+  <Step title="Compile with Emscripten">
+    Runs `emcc` (Emscripten's C compiler) to produce `php.wasm` and one or more JavaScript loader files, depending on the target environment.
+  </Step>
+  <Step title="Compile the C API module">
+    Compiles `php_wasm.c`, which exposes a JavaScript-callable C API. The three most important functions are `phpwasm_init()`, `phpwasm_run()`, and `phpwasm_refresh()`.
+  </Step>
+  <Step title="Post-process the JavaScript loader">
+    Transforms Emscripten's default `php.js` output into an ESM module with additional features required by Playground's JavaScript `PHP` class.
+  </Step>
+</Steps>
+
+### C API exposed to JavaScript
+
+The `php_wasm.c` module exposes a minimal API that the JavaScript layer calls directly:
+
+| Function | Description |
+|---|---|
+| `phpwasm_init()` | Creates a new PHP context. Must be called before running any PHP code. |
+| `phpwasm_run(char *code)` | Runs a PHP script, writing stdout and stderr to `/tmp/`. Returns the exit code. |
+| `phpwasm_refresh()` | Destroys the current PHP context and starts a fresh one. Call between requests. |
+
+The generated JavaScript module is not meant for direct use. Instead, use the `PHP` class:
+
+```typescript
+// In Node.js:
+const php = new PHP(await loadNodeRuntime('8.0'));
+
+// In the browser:
+const php = new PHP(await loadWebRuntime('8.0'));
+```
+
+Both classes extend `BasePHP` from `@php-wasm/universal` and implement the `UniversalPHP` interface, which standardises the API across all PHP environments.
+
+## Supported PHP versions
+
+Playground ships WASM binaries for PHP **7.4 through 8.5**, for both the web (browser) target and the Node.js target. Each version is a separate static `.wasm` file. Switching PHP versions simply means loading a different file — for example, `php_7_4.wasm` instead of `php_8_2.wasm`.
+
+<Note>
+PHP binaries are pre-compiled and committed to the repository. Recompilation is rarely needed for day-to-day development.
+</Note>
+
+## Browser execution modes: Asyncify and JSPI
+
+PHP is synchronous C code, but browser JavaScript is asynchronous. Playground ships two execution modes to bridge this gap.
+
+### Asyncify
+
+[Asyncify](https://emscripten.org/docs/porting/asyncify.html) lets synchronous C code interact with asynchronous JavaScript by saving the entire C call stack before yielding to JS, then restoring it when the async call completes. This is called **stack switching**.
+
+Because wrapping every C function adds significant overhead, Playground maintains a hand-curated list of the specific C functions that can appear in the call stack at the point of an async operation. Using `ASYNCIFY_ONLY` with this list keeps the binary size and startup time manageable — auto-detecting all required functions lists around 70,000 entries, pushing startup time to 4.5 seconds.
+
+<Warning>
+Missing a function from the `ASYNCIFY_ONLY` list causes a WebAssembly crash whenever that function is on the call stack during an async operation. If you encounter an Asyncify crash, add a failing test to `packages/php-wasm/node/src/test/php-asyncify.spec.ts` and run `npm run fix-asyncify` to identify and add the missing function automatically.
+</Warning>
+
+### JSPI (JavaScript Promise Integration)
+
+[JSPI](https://v8.dev/blog/jspi) handles stack switching natively in V8, eliminating the need for Asyncify's function wrapping. Playground ships JSPI builds alongside Asyncify builds for all PHP versions (7.4–8.5):
+
+- The Playground CLI **auto-detects JSPI support** and enables it automatically.
+- Node.js 23+ supports JSPI natively; Node.js 22 requires `--experimental-wasm-jspi` (handled automatically by the CLI).
+- Browser support is currently limited to Chrome/Chromium-based browsers.
+
+### Binary size optimisation with `MAIN_MODULE=2`
+
+Both build modes use Emscripten's `MAIN_MODULE=2` flag, which performs dead-code elimination on exported symbols. This reduced total binary size by **122 MB** (13.7%), with `.wasm` files alone shrinking by **109 MB** (16%) and JavaScript glue code by **14.5 MB** (63%).
+
+## The virtual filesystem
+
+The PHP WASM module has its own in-memory virtual filesystem provided by [Emscripten's FS library](https://emscripten.org/docs/api_reference/Filesystem-API.html). WordPress Playground wraps this low-level API with a higher-level interface on the `PHP` class:
+
+```typescript
+// Create a directory tree
+php.mkdirTree('/var/www');
+
+// Write a file
+php.writeFile('/var/www/index.php', '<?php echo "Hello!";');
+
+// Check existence
+php.fileExists('/var/www/index.php'); // true
+
+// Read a file
+php.readFile('/var/www/index.php'); // "<?php echo "Hello!";"
+
+// Delete a file
+php.unlink('/var/www/index.php');
+```
+
+In Node.js, you can also mount a real host directory into the PHP filesystem using Emscripten's NODEFS library (enabled by the `WITH_NODEFS=yes` build option). This allows the CLI to serve a local plugin or theme directory directly.
+
+## PHP extensions
+
+PHP extensions are included at compile time and listed in the Dockerfile. Some extensions (such as `zip`) can be toggled via build arguments; others (such as `sqlite3`) are hardcoded.
+
+Commonly used build arguments:
+
+| Argument | Default | Description |
+|---|---|---|
+| `PHP_VERSION` | `8.0.24` | PHP version to compile. Must match a `PHP-x.y.z` branch in `php/php-src`. |
+| `EMSCRIPTEN_ENVIRONMENT` | `web` | `web` or `node`. The `web` target produces two loaders (`php-web.js`, `php-webworker.js`); `node` produces one (`php-node.js`). |
+| `WITH_LIBXML` | `no` | Enables `libxml2`, `dom`, `xml`, and `simplexml` extensions. |
+| `WITH_LIBZIP` | `yes` | Enables `zlib`, `libzip`, and the `zip` extension. |
+| `WITH_NODEFS` | `no` | Includes Emscripten's NODEFS library for mounting host directories in Node.js. |
+
+<Tip>
+To rebuild PHP for the browser, run `npm run recompile:php:web`. For Node.js, run `npm run recompile:php:node`. To build a specific version with JSPI: `npx nx recompile-php php-wasm-node --PHP_VERSION=8.0 --WITH_JSPI=yes`.
+</Tip>
+
+## Web vs Node.js builds
+
+<CodeGroup>
+
+```typescript Browser (web)
+import { PHP, loadWebRuntime } from '@php-wasm/web';
+
+// Produces two loaders: php-web.js and php-webworker.js
+// Runs inside a Web Worker in the browser
+const php = new PHP(await loadWebRuntime('8.3'));
+await php.run({ code: '<?php echo "Hello from browser PHP!";' });
+```
+
+```typescript Node.js
+import { PHP, loadNodeRuntime } from '@php-wasm/node';
+
+// Produces a single loader: php-node.js
+// Can mount real host directories and connect to MySQL
+const php = new PHP(await loadNodeRuntime('8.3'));
+await php.run({ code: '<?php echo "Hello from Node.js PHP!";' });
+```
+
+</CodeGroup>
+
+The Node.js build supports richer networking: a WebSocket-to-TCP proxy lets PHP install Composer packages or connect to a MySQL server. The browser build instead provides two network transports — a fast path for `wp_safe_remote_get` that translates to `fetch()`, and a slower path that parses TLS transmissions and translates them to `fetch()` calls.

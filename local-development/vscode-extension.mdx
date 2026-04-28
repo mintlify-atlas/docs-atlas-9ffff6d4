@@ -1,0 +1,93 @@
+---
+title: "WordPress Playground VS Code extension for developers"
+description: "Develop WordPress plugins and themes inside VS Code with no Apache, MySQL, or Docker. One click starts a local WordPress server backed by WebAssembly PHP."
+---
+
+The [WordPress Playground VS Code extension](https://marketplace.visualstudio.com/items?itemName=WordPressPlayground.wordpress-playground) brings a zero-setup WordPress development environment directly into your editor. It uses the same WebAssembly PHP runtime and SQLite database as WordPress Playground in the browser, so there is nothing to install beyond the extension itself. Open a plugin or theme directory in VS Code, click **Start WordPress Server**, and a local WordPress site is ready to use with your project files mounted automatically.
+
+<Note>
+  The VS Code extension is maintained in the [Playground Tools](https://github.com/WordPress/playground-tools/) repository, separate from the main WordPress Playground repository. You can find the full documentation in the [extension README](https://github.com/WordPress/playground-tools/blob/trunk/packages/vscode-extension/README.md).
+</Note>
+
+## Installation
+
+<Steps>
+  <Step title="Open the Extensions panel in VS Code">
+    Press `Ctrl+Shift+X` (Windows/Linux) or `Cmd+Shift+X` (macOS), or click the Extensions icon in the Activity Bar.
+  </Step>
+
+  <Step title="Search for WordPress Playground">
+    Type **WordPress Playground** in the search box. Look for the extension published by **WordPressPlayground**.
+  </Step>
+
+  <Step title="Install the extension">
+    Click **Install**. VS Code will download and activate the extension automatically.
+
+    Alternatively, install directly from the Marketplace page:
+    [marketplace.visualstudio.com/items?itemName=WordPressPlayground.wordpress-playground](https://marketplace.visualstudio.com/items?itemName=WordPressPlayground.wordpress-playground)
+  </Step>
+
+  <Step title="Open your plugin or theme directory">
+    Use **File → Open Folder** to open the root of your plugin or theme project in VS Code.
+  </Step>
+
+  <Step title="Start the WordPress server">
+    Click the **Start WordPress Server** button that appears in the VS Code status bar or in the editor toolbar. The extension detects your project type and mounts it automatically.
+
+    WordPress is ready in a few seconds. The extension opens a browser preview (or an embedded webview, depending on your configuration) pointing at the local server.
+  </Step>
+</Steps>
+
+## Features
+
+### Zero-configuration WordPress
+
+The extension bundles WebAssembly PHP binaries and configures WordPress to use SQLite. You do not need Apache, MySQL, Docker, or a native PHP install. The entire WordPress environment runs inside VS Code.
+
+### Automatic project detection
+
+When you start the server in a plugin or theme directory, the extension mounts your project into the correct WordPress location automatically:
+
+- A directory with a `Plugin Name:` PHP header is mounted as a plugin.
+- A directory with a `style.css` `Theme Name:` header is mounted as a theme.
+- A directory containing both `plugins/` and `themes/` subdirectories is mounted as `wp-content`.
+- A directory containing a full WordPress installation is mounted as the WordPress root.
+
+### Blueprint support
+
+You can configure the initial state of your WordPress environment with a [Blueprint](/blueprints/overview) file. Blueprints let you install plugins, set WordPress options, log in as admin, and run PHP code — all before the site first loads.
+
+Place a `blueprint.json` file in your project root, or point to one via the extension settings.
+
+### Switch PHP and WordPress versions
+
+The extension respects the same version flags available in the CLI. You can set your preferred PHP and WordPress versions in the extension settings without leaving VS Code.
+
+## Extension settings
+
+The extension contributes the following settings to VS Code (accessible via **File → Preferences → Settings** and searching for "WordPress Playground"):
+
+| Setting | Description | Default |
+|---|---|---|
+| `wordpressPlayground.php` | PHP version to use. | `8.3` |
+| `wordpressPlayground.wp` | WordPress version to use. | `latest` |
+| `wordpressPlayground.blueprintFile` | Path to a Blueprint JSON file relative to the workspace root. | — |
+| `wordpressPlayground.login` | Automatically log in as admin on start. | `true` |
+
+<Tip>
+  You can commit a `blueprint.json` to your repository so every contributor gets
+  the same pre-configured WordPress environment when they start the extension.
+</Tip>
+
+## More information
+
+The VS Code extension is part of the [Playground Tools](https://github.com/WordPress/playground-tools/) monorepo alongside `@wp-now/wp-now` and other community tooling. To report bugs, request features, or contribute, open an issue or pull request in that repository.
+
+<CardGroup cols={2}>
+  <Card title="Playground Tools repo" icon="github" href="https://github.com/WordPress/playground-tools/">
+    Source code, issues, and contributing guide for the VS Code extension and related tools.
+  </Card>
+  <Card title="Extension README" icon="book-open" href="https://github.com/WordPress/playground-tools/blob/trunk/packages/vscode-extension/README.md">
+    Full documentation including advanced configuration options.
+  </Card>
+</CardGroup>

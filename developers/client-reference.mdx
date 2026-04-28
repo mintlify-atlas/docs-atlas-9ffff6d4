@@ -1,0 +1,399 @@
+---
+title: "JavaScript client API reference for @wp-playground/client"
+description: "Complete reference for the @wp-playground/client package — startPlaygroundWeb(), PlaygroundClient, and all exported TypeScript types."
+---
+
+The `@wp-playground/client` package is the primary JavaScript entry point for embedding WordPress Playground in a web page. It exports `startPlaygroundWeb()` to boot a Playground instance inside an `<iframe>`, the `PlaygroundClient` interface that represents a live connection to that instance, and a set of TypeScript types re-exported from the lower-level `@php-wasm/universal` package.
+
+## Installation
+
+```bash
+npm install @wp-playground/client
+```
+
+## startPlaygroundWeb()
+
+Loads `remote.html` into an existing `<iframe>`, waits for the PHP and WordPress runtime to boot, optionally executes a Blueprint, and resolves to a `PlaygroundClient` handle.
+
+```typescript
+function startPlaygroundWeb(options: StartPlaygroundOptions): Promise<PlaygroundClient>
+```
+
+### Usage example
+
+```typescript
+import { startPlaygroundWeb } from '@wp-playground/client';
+
+const iframe = document.getElementById('playground') as HTMLIFrameElement;
+
+const client = await startPlaygroundWeb({
+  iframe,
+  remoteUrl: 'https://playground.wordpress.net/remote.html',
+  blueprint: {
+    landingPage: '/wp-admin/',
+    steps: [
+      { step: 'login', username: 'admin' },
+      {
+        step: 'installPlugin',
+        pluginData: { resource: 'wordpress.org/plugins', slug: 'gutenberg' },
+      },
+    ],
+  },
+});
+
+// Navigate to a different page
+await client.goTo('/wp-admin/plugins.php');
+```
+
+### Options
+
+<ParamField path="iframe" type="HTMLIFrameElement" required>
+  The `<iframe>` element that will host the Playground instance. The element must already exist in the DOM. `startPlaygroundWeb()` sets its `src` to `remoteUrl` and waits for the `load` event before proceeding.
+</ParamField>
+
+<ParamField path="remoteUrl" type="string" required>
+  URL to `remote.html` — the page that bootstraps the PHP and WordPress WebAssembly runtime. Must be served from a recognised origin (for example `https://playground.wordpress.net/remote.html`) and must have a path of exactly `/remote.html`. Using a mismatched origin causes a runtime error to prevent version-skew issues between the client library and the remote runtime.
+</ParamField>
+
+<ParamField path="blueprint" type="BlueprintV1">
+  An optional Blueprint object to execute immediately after the Playground boots. Blueprint steps run sequentially before `startPlaygroundWeb()` resolves. See the [Blueprint steps reference](/developers/blueprint-steps-reference) for the full list of available steps.
+</ParamField>
+
+<ParamField path="progressTracker" type="ProgressTracker">
+  A `ProgressTracker` instance (from `@php-wasm/progress`) used to report boot progress. If omitted a new tracker is created internally. Attach listeners to this object if you want to display a loading bar in your UI.
+</ParamField>
+
+<ParamField path="disableProgressBar" type="boolean">
+  When `true`, the built-in progress bar overlay rendered inside `remote.html` is hidden. Useful when you supply your own loading UI via `progressTracker`.
+</ParamField>
+
+<ParamField path="onBlueprintStepCompleted" type="OnStepCompleted">
+  Callback invoked after each Blueprint step completes. Receives the step result and the step definition. Use this to update progress indicators or log step output.
+</ParamField>
+
+<ParamField path="onClientConnected" type="(playground: PlaygroundClient) => void">
+  Callback invoked once the `PlaygroundClient` connection is established but **before** Blueprint steps run. This is the right place to perform any setup that must happen before the Blueprint executes, such as mounting additional filesystems.
+</ParamField>
+
+<ParamField path="mounts" type="MountDescriptor[]">
+  An array of filesystem mounts to set up at boot time. Each `MountDescriptor` specifies a `mountpoint` path inside the Playground filesystem and a `device` description (for example an OPFS directory handle). Mounts are created before Blueprint steps run.
+
+  <Expandable title="MountDescriptor properties">
+    <ParamField path="mountpoint" type="string" required>
+      The absolute path inside the Playground filesystem where the device is mounted.
+    </ParamField>
+    <ParamField path="device" type="MountDevice" required>
+      The storage device to mount. Supports OPFS (`{ type: 'opfs', ... }`) and other backends provided by `@wp-playground/storage`.
+    </ParamField>
+    <ParamField path="initialSyncDirection" type='"opfs-to-memfs" | "memfs-to-opfs"' required>
+      Controls which side wins during the initial sync when the mount is first attached.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="shouldInstallWordPress" type="boolean">
+  When `false`, skips the automatic WordPress installation step. Defaults to `true`. Set to `false` when you are importing a full WordPress site via the `importWordPressFiles` Blueprint step or via a custom mount, so Playground does not overwrite the imported database.
+</ParamField>
+
+<ParamField path="scope" type="string">
+  An optional string prefix added to the site URL served by `remote.html`. For example, a scope of `playground` produces a URL like `/scope:playground/index.php`. Scopes let multiple independent Playground instances share the same origin without their service workers interfering. If omitted a random scope is generated automatically.
+</ParamField>
+
+<ParamField path="corsProxy" type="string">
+  URL of a CORS proxy used for cross-origin requests made by Blueprint resource fetches. For example, setting this to `https://cors.wordpress.net/proxy.php` causes requests to `https://github.com/…` to be rewritten as `https://cors.wordpress.net/proxy.php?https://github.com/…`. Only requests that would otherwise fail due to CORS are proxied; not every request.
+</ParamField>
+
+<ParamField path="wordpressInstallMode" type="WordPressInstallMode">
+  Controls how WordPress is installed. Defaults to `'install-from-existing-files-if-needed'`. Possible values come from the `WordPressInstallMode` type exported by `@wp-playground/wordpress`.
+</ParamField>
+
+<ParamField path="pathAliases" type="PathAlias[]">
+  Path aliases that map URL prefixes to filesystem paths outside the document root, similar to Nginx's `alias` directive.
+
+  <Expandable title="PathAlias properties">
+    <ParamField path="urlPrefix" type="string" required>
+      The URL prefix to match, for example `/phpmyadmin`.
+    </ParamField>
+    <ParamField path="fsPath" type="string" required>
+      The filesystem path to serve from, for example `/tools/phpmyadmin`.
+    </ParamField>
+  </Expandable>
+
+  ```typescript
+  pathAliases: [
+    { urlPrefix: '/phpmyadmin', fsPath: '/tools/phpmyadmin' }
+  ]
+  ```
+</ParamField>
+
+<ParamField path="sqliteDriverVersion" type="string">
+  The version string of the SQLite database driver to load. Defaults to the latest development version bundled with Playground. Specify a version only if you need to pin the driver for reproducibility.
+</ParamField>
+
+---
+
+## PlaygroundClient
+
+`PlaygroundClient` is the interface returned by `startPlaygroundWeb()`. It exposes the full PHP filesystem and request API as well as Playground-specific navigation and introspection methods. All methods are asynchronous and return `Promise` values.
+
+`PlaygroundClient` is a `RemoteAPI` wrapper around `PlaygroundWorkerEndpoint & WebClientMixin`, which itself extends `PHPWorker`. It is a superset of `UniversalPHP`.
+
+### PHP execution
+
+<ParamField path="run" type="(options: PHPRunOptions) => Promise<PHPResponse>">
+  Executes PHP code or a PHP script file. Returns the full response including stdout, stderr, exit code, and HTTP response headers.
+
+  ```typescript
+  const result = await client.run({
+    code: `<?php echo 'Hello ' . phpversion(); ?>`,
+  });
+  console.log(result.text); // "Hello 8.2.x"
+  ```
+
+  See [`PHPRunOptions`](#phprunoptions) for the full list of options.
+</ParamField>
+
+<ParamField path="request" type="(options: PHPRequest) => Promise<PHPResponse>">
+  Dispatches an HTTP-style request to the WordPress server running inside Playground. Use this to call WordPress REST API endpoints, wp-admin pages, or any other URL served by the PHP runtime.
+
+  ```typescript
+  const response = await client.request({
+    url: '/wp-json/wp/v2/posts',
+    method: 'GET',
+  });
+  console.log(response.json);
+  ```
+
+  See [`PHPRequest`](#phprequest) for available options.
+</ParamField>
+
+### Filesystem
+
+<ParamField path="readFileAsText" type="(path: string) => Promise<string>">
+  Reads a file from the Playground filesystem and returns its content as a UTF-8 string.
+</ParamField>
+
+<ParamField path="readFileAsBuffer" type="(path: string) => Promise<Uint8Array>">
+  Reads a file from the Playground filesystem and returns its raw bytes as a `Uint8Array`.
+</ParamField>
+
+<ParamField path="writeFile" type="(path: string, data: string | Uint8Array) => Promise<void>">
+  Writes data to the file at `path`. Creates the file if it does not exist. The parent directory must already exist.
+</ParamField>
+
+<ParamField path="listFiles" type="(path: string, options?: ListFilesOptions) => Promise<string[]>">
+  Returns the names of entries inside the directory at `path`.
+</ParamField>
+
+<ParamField path="fileExists" type="(path: string) => Promise<boolean>">
+  Returns `true` if a file or directory exists at `path`.
+</ParamField>
+
+<ParamField path="isDir" type="(path: string) => Promise<boolean>">
+  Returns `true` if the path exists and is a directory.
+</ParamField>
+
+<ParamField path="mkdir" type="(path: string) => Promise<void>">
+  Creates a new directory at `path`. Does not create intermediate directories; all parent directories must already exist.
+</ParamField>
+
+<ParamField path="mkdirTree" type="(path: string) => Promise<void>">
+  Creates `path` and all missing intermediate directories, equivalent to `mkdir -p`.
+</ParamField>
+
+<ParamField path="unlink" type="(path: string) => Promise<void>">
+  Removes the file at `path`. Throws if `path` refers to a directory.
+</ParamField>
+
+<ParamField path="rmdir" type="(path: string, options?: RmDirOptions) => Promise<void>">
+  Removes the directory at `path`. By default only removes empty directories; pass `{ recursive: true }` to remove non-empty directories.
+</ParamField>
+
+<ParamField path="mv" type="(fromPath: string, toPath: string) => Promise<void>">
+  Moves or renames a file or directory.
+</ParamField>
+
+### Navigation
+
+<ParamField path="goTo" type="(requestedPath: string) => Promise<void>">
+  Navigates the Playground `<iframe>` to the given path, for example `/wp-admin/plugins.php`.
+</ParamField>
+
+<ParamField path="getCurrentURL" type="() => Promise<string>">
+  Returns the current URL displayed in the Playground `<iframe>`.
+</ParamField>
+
+<ParamField path="onNavigation" type="(fn: (url: string) => void) => Promise<void>">
+  Registers a callback that fires every time the Playground `<iframe>` navigates to a new URL. The callback receives the new URL as a string.
+</ParamField>
+
+### Introspection
+
+<ParamField path="documentRoot" type="string">
+  The absolute path of the WordPress document root inside the Playground filesystem — typically `/wordpress`.
+</ParamField>
+
+<ParamField path="absoluteUrl" type="string">
+  The fully-qualified URL at which WordPress is served inside Playground, including any scope prefix.
+</ParamField>
+
+### PHP constants
+
+<ParamField path="defineConstant" type="(name: string, value: string | boolean | number | null) => Promise<void>">
+  Defines a PHP constant that persists for the lifetime of the current PHP runtime. Equivalent to calling `define()` before each request.
+</ParamField>
+
+---
+
+## Exported types
+
+### PHPRunOptions
+
+Options passed to `client.run()`.
+
+<ResponseField name="code" type="string">
+  A PHP code snippet to evaluate. Either `code` or `scriptPath` must be provided.
+</ResponseField>
+
+<ResponseField name="scriptPath" type="string">
+  Absolute path to a `.php` file to execute.
+</ResponseField>
+
+<ResponseField name="relativeUri" type="string">
+  The request path after URL-rewriting rules have been applied, for example `/wp-login.php`.
+</ResponseField>
+
+<ResponseField name="method" type="HTTPMethod">
+  HTTP method. Defaults to `GET`.
+</ResponseField>
+
+<ResponseField name="headers" type="PHPRequestHeaders">
+  HTTP request headers as a `Record<string, string>`.
+</ResponseField>
+
+<ResponseField name="body" type="string | Uint8Array">
+  Raw request body.
+</ResponseField>
+
+<ResponseField name="env" type="Record<string, string>">
+  Environment variables to inject into the PHP process for this run only.
+</ResponseField>
+
+<ResponseField name="$_SERVER" type="Record<string, string>">
+  `$_SERVER` superglobal entries to set for this run.
+</ResponseField>
+
+<ResponseField name="protocol" type="string">
+  Request protocol, for example `http` or `https`.
+</ResponseField>
+
+### PHPRequest
+
+Options passed to `client.request()`.
+
+<ResponseField name="url" type="string" required>
+  The request path or absolute URL to dispatch to the WordPress runtime.
+</ResponseField>
+
+<ResponseField name="method" type="HTTPMethod">
+  HTTP method. Defaults to `GET`.
+</ResponseField>
+
+<ResponseField name="headers" type="PHPRequestHeaders">
+  HTTP request headers as a `Record<string, string>`.
+</ResponseField>
+
+<ResponseField name="body" type="string | Uint8Array | Record<string, string | Uint8Array | File>">
+  Request body. When an object is provided the request is encoded as `multipart/form-data`.
+</ResponseField>
+
+### PHPResponse
+
+Returned by `client.run()` and `client.request()`.
+
+<ResponseField name="exitCode" type="number">
+  PHP process exit code. `0` means success; `1` and `2` indicate errors.
+</ResponseField>
+
+<ResponseField name="stdout" type="ArrayBuffer">
+  Raw stdout output from the PHP process.
+</ResponseField>
+
+<ResponseField name="stderr" type="string[]">
+  Lines written to stderr.
+</ResponseField>
+
+<ResponseField name="headers" type="Record<string, string[]>">
+  HTTP response headers.
+</ResponseField>
+
+<ResponseField name="httpStatusCode" type="number">
+  HTTP status code, for example `200` or `404`.
+</ResponseField>
+
+<ResponseField name="text" type="string">
+  Convenience accessor that decodes `stdout` as a UTF-8 string.
+</ResponseField>
+
+<ResponseField name="json" type="any">
+  Convenience accessor that JSON-parses `text`. Throws if the output is not valid JSON.
+</ResponseField>
+
+<ResponseField name="bytes" type="Uint8Array">
+  Convenience accessor that wraps `stdout` as a `Uint8Array`.
+</ResponseField>
+
+### PHPOutput
+
+<Note>
+  `PHPOutput` is the lower-level output type returned by the Emscripten PHP runtime directly. `PHPResponse` is a higher-level wrapper that adds HTTP semantics. Most application code should use `PHPResponse`.
+</Note>
+
+<ResponseField name="exitCode" type="number">
+  PHP process exit code. `0` means success.
+</ResponseField>
+
+<ResponseField name="stdout" type="ArrayBuffer">
+  Raw stdout bytes.
+</ResponseField>
+
+<ResponseField name="stderr" type="string[]">
+  Lines written to stderr.
+</ResponseField>
+
+### SupportedPHPVersion
+
+A string union of all PHP versions that WordPress Playground supports. The exact list is maintained in `@php-wasm/universal` and may change between releases. Use `SupportedPHPVersionsList` (an array) or `LatestSupportedPHPVersion` (a string constant) from the same package when you need to enumerate versions at runtime.
+
+### UniversalPHP
+
+A union type that represents any PHP instance that the Blueprint system can target: a local `LimitedPHPApi`, a `Remote<LimitedPHPApi>` proxy, or a `Pooled<LimitedPHPApi>` pool proxy. All Blueprint step handlers accept a `UniversalPHP` as their first argument, which means they work both in the browser (where the PHP runtime lives in a web worker) and in Node.js.
+
+### Other exported types
+
+| Type | Description |
+|---|---|
+| `HTTPMethod` | String union of supported HTTP methods: `GET`, `POST`, `HEAD`, `OPTIONS`, `PATCH`, `PUT`, `DELETE` |
+| `PHPRequestHeaders` | `Record<string, string>` alias for HTTP request headers |
+| `ErrnoError` | Error subclass thrown by filesystem operations, carrying a numeric `errno` code |
+| `PHPRequestHandler` | Interface for the PHP HTTP request handler |
+| `PHPRequestHandlerConfiguration` | Configuration object passed when creating a `PHPRequestHandler` |
+| `RmDirOptions` | Options for `rmdir()`, currently `{ recursive?: boolean }` |
+| `RuntimeType` | Discriminant for the PHP runtime environment (`'web'` or `'node'`) |
+| `PathAlias` | `{ urlPrefix: string; fsPath: string }` mapping used by `startPlaygroundWeb()` |
+| `MountDescriptor` | Describes an OPFS or storage mount |
+
+---
+
+## Helper utilities
+
+The following utilities are also exported from `@wp-playground/client`:
+
+| Export | Description |
+|---|---|
+| `setPhpIniEntries(php, entries)` | Applies `php.ini` key-value pairs to a running PHP instance |
+| `SupportedPHPVersions` | Object keyed by PHP version string |
+| `SupportedPHPVersionsList` | Array of all supported PHP version strings |
+| `LatestSupportedPHPVersion` | String constant for the latest supported PHP version |
+| `phpVar(value)` | Serialises a JavaScript value to a PHP literal for safe embedding in PHP code |
+| `phpVars(record)` | Serialises multiple values, returning an object of PHP literals |

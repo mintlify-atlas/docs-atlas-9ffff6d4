@@ -1,0 +1,297 @@
+---
+title: "Configure WordPress Playground via URL query parameters"
+description: "Use the Query API to configure WordPress Playground through URL parameters — install plugins, set PHP version, auto-login, and more without writing code."
+---
+
+The Query API is the simplest way to configure a WordPress Playground instance. You control it entirely through URL query parameters appended to `https://playground.wordpress.net/`. No JavaScript and no build tooling required. Because the result is just a URL, you can share it as a link, embed it in an `<iframe>`, or use it as a "Try it yourself" button in a tutorial.
+
+For example, to open Playground with the Gutenberg plugin installed and the post editor open:
+
+```text
+https://playground.wordpress.net/?plugin=gutenberg&url=/wp-admin/post-new.php
+```
+
+Or embed that URL directly in a page:
+
+```html
+<iframe
+  src="https://playground.wordpress.net/?plugin=gutenberg&url=/wp-admin/post-new.php&mode=seamless"
+  style="width: 100%; height: 500px; border: none;">
+</iframe>
+```
+
+## Supported parameters
+
+### WordPress and PHP version
+
+<ParamField query="php" type="string" default="8.5">
+  The PHP version to load. Accepts `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, `8.5`, or `latest`.
+
+  ```text
+  https://playground.wordpress.net/?php=8.2
+  ```
+</ParamField>
+
+<ParamField query="wp" type="string" default="latest">
+  The WordPress version to load. Accepts the three most recent major versions (e.g., `6.3`, `6.4`, `6.5`) or the generic values `latest`, `nightly`, or `beta`.
+
+  ```text
+  https://playground.wordpress.net/?wp=6.4
+  ```
+</ParamField>
+
+### Plugins and themes
+
+<ParamField query="plugin" type="string">
+  Install a plugin from the WordPress.org plugin directory. Use the plugin slug from the directory URL — for example, the slug for `https://wordpress.org/plugins/coblocks/` is `coblocks`. Repeat the parameter to install multiple plugins. Installing a plugin automatically logs the user in as an admin.
+
+  ```text
+  https://playground.wordpress.net/?plugin=coblocks&plugin=wp-lazy-loading
+  ```
+</ParamField>
+
+<ParamField query="theme" type="string">
+  Install a theme from the WordPress.org theme directory. Use the theme slug from the directory URL — for example, the slug for `https://wordpress.org/themes/disco/` is `disco`. Repeat the parameter to install multiple themes. Installing a theme automatically logs the user in as an admin.
+
+  ```text
+  https://playground.wordpress.net/?theme=disco
+  ```
+</ParamField>
+
+### Navigation and display
+
+<ParamField query="url" type="string" default="/wp-admin/">
+  The WordPress page to navigate to on load. Use a site-relative path.
+
+  ```text
+  https://playground.wordpress.net/?url=/wp-admin/post-new.php
+  ```
+</ParamField>
+
+<ParamField query="mode" type="string" default="browser-full-screen">
+  How the WordPress instance is displayed. Use `browser-full-screen` to wrap WordPress in a simulated browser UI, or `seamless` to render it full-width without the UI chrome.
+
+  ```text
+  https://playground.wordpress.net/?mode=seamless
+  ```
+</ParamField>
+
+<ParamField query="page-title" type="string">
+  Customizes the browser tab title. Useful for identifying different instances when working with multiple Playground tabs.
+
+  ```text
+  https://playground.wordpress.net/?page-title=My+Test+Site
+  ```
+</ParamField>
+
+### Authentication
+
+<ParamField query="login" type="string" default="yes">
+  Whether to automatically log in as admin. Accepts `yes` or `no`.
+
+  ```text
+  https://playground.wordpress.net/?login=no
+  ```
+</ParamField>
+
+### Networking
+
+<ParamField query="networking" type="string" default="yes">
+  Whether to enable outbound network requests from PHP. Accepts `yes` or `no`. Networking is required to install plugins and themes from the directory at runtime.
+
+  ```text
+  https://playground.wordpress.net/?networking=no
+  ```
+</ParamField>
+
+### Loading a Blueprint
+
+<ParamField query="blueprint-url" type="string">
+  The URL of a remote Blueprint JSON file to use as the Playground configuration. The file must be served with a permissive `Access-Control-Allow-Origin` header.
+
+  ```text
+  https://playground.wordpress.net/?blueprint-url=https://example.com/my-blueprint.json
+  ```
+</ParamField>
+
+### Storage
+
+<ParamField query="storage" type="string">
+  The storage backend for persisting Playground data. Accepted values depend on the host, but common options include `none` (ephemeral), `browser` (IndexedDB), and `local-fs` (local filesystem via File System Access API).
+</ParamField>
+
+<ParamField query="site-slug" type="string">
+  Load a named site from browser storage. If the site does not exist, the user is prompted to save a new site with that slug.
+
+  ```text
+  https://playground.wordpress.net/?site-slug=my-project
+  ```
+</ParamField>
+
+<ParamField query="can-save" type="string" default="yes">
+  Whether the user can save their Playground to the browser or local computer. Set to `no` to remove all save UI.
+
+  ```text
+  https://playground.wordpress.net/?can-save=no
+  ```
+</ParamField>
+
+### Content import
+
+<ParamField query="import-site" type="string">
+  Import site files and a database from a ZIP file at the specified URL. The ZIP must be accessible with a permissive CORS policy.
+
+  ```text
+  https://playground.wordpress.net/?import-site=https://example.com/my-site.zip
+  ```
+</ParamField>
+
+<ParamField query="import-wxr" type="string">
+  Import content from a WXR (WordPress eXtended RSS) file at the specified URL. Uses the WordPress Importer plugin. The admin user must be logged in.
+
+  ```text
+  https://playground.wordpress.net/?import-wxr=https://example.com/content.xml
+  ```
+</ParamField>
+
+### Multisite
+
+<ParamField query="multisite" type="string" default="no">
+  Enable WordPress multisite mode. Accepts `yes` or `no`.
+
+  ```text
+  https://playground.wordpress.net/?multisite=yes
+  ```
+</ParamField>
+
+### Language
+
+<ParamField query="language" type="string" default="en_US">
+  Set the WordPress locale. Must be combined with `networking=yes` so WordPress can download the translation files.
+
+  ```text
+  https://playground.wordpress.net/?language=fr_FR&networking=yes
+  ```
+</ParamField>
+
+### Performance
+
+<ParamField query="lazy" type="boolean">
+  Defer loading Playground assets until the user clicks a "Run" button. No value is needed — the presence of the parameter enables it.
+
+  ```text
+  https://playground.wordpress.net/?plugin=gutenberg&lazy
+  ```
+</ParamField>
+
+### Developer tools
+
+<ParamField query="core-pr" type="string">
+  Install a specific pull request from [WordPress core](https://github.com/WordPress/wordpress-develop). Accepts the PR number.
+
+  ```text
+  https://playground.wordpress.net/?core-pr=6883
+  ```
+</ParamField>
+
+<ParamField query="gutenberg-pr" type="string">
+  Install a specific pull request from the [Gutenberg](https://github.com/WordPress/gutenberg) repository. Accepts the PR number.
+
+  ```text
+  https://playground.wordpress.net/?gutenberg-pr=65337
+  ```
+</ParamField>
+
+<ParamField query="gutenberg-branch" type="string">
+  Install a specific branch from the Gutenberg repository.
+
+  ```text
+  https://playground.wordpress.net/?gutenberg-branch=trunk
+  ```
+</ParamField>
+
+### MCP server
+
+<ParamField query="mcp" type="string" default="no">
+  Start the Model Context Protocol (MCP) server bridge, allowing external MCP clients to connect to and control the Playground instance. Accepts `yes` or `no`.
+
+  ```text
+  https://playground.wordpress.net/?mcp=yes
+  ```
+</ParamField>
+
+<ParamField query="mcp-port" type="number" default="7999">
+  The WebSocket port the MCP bridge uses to communicate with the MCP server. Must be combined with `mcp=yes`.
+
+  ```text
+  https://playground.wordpress.net/?mcp=yes&mcp-port=8080
+  ```
+</ParamField>
+
+### Overlays
+
+<ParamField query="overlay" type="string">
+  Open a UI overlay on page load. Currently supports `blueprints` to open the Blueprint Gallery directly. The parameter is removed from the URL when the overlay is closed.
+
+  ```text
+  https://playground.wordpress.net/?overlay=blueprints
+  ```
+</ParamField>
+
+## Combining parameters
+
+Parameters are combined with `&`. The following example opens a seamless Playground running PHP 8.3, WordPress 6.5, with the Gutenberg plugin installed and the post editor loaded:
+
+```text
+https://playground.wordpress.net/?php=8.3&wp=6.5&plugin=gutenberg&url=/wp-admin/post-new.php&mode=seamless
+```
+
+Embed that as an iframe:
+
+```html
+<iframe
+  src="https://playground.wordpress.net/?php=8.3&wp=6.5&plugin=gutenberg&url=/wp-admin/post-new.php&mode=seamless"
+  style="width: 100%; height: 600px; border: none;">
+</iframe>
+```
+
+## CORS requirement for URL-based imports
+
+When using `import-site`, `import-wxr`, or `blueprint-url` to load remote files, those files must be served with the following HTTP response header:
+
+```text
+Access-Control-Allow-Origin: *
+```
+
+Without this header, the browser will block the cross-origin request. See [Cross-Origin Resource Sharing (CORS)](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) for details.
+
+## GitHub export parameters
+
+The following parameters pre-configure the GitHub export form in the Playground UI:
+
+| Parameter | Description |
+|---|---|
+| `gh-ensure-auth` | If `yes`, prompt the user to authenticate with GitHub before exporting. |
+| `ghexport-repo-url` | The GitHub repository URL to export to. |
+| `ghexport-pr-action` | The action to take: `create` or `update`. |
+| `ghexport-playground-root` | Root directory in Playground to export from. |
+| `ghexport-repo-root` | Root directory in the repository to export to. |
+| `ghexport-content-type` | Content type: `plugin`, `theme`, `wp-content`, or `custom-paths`. |
+| `ghexport-plugin` | Plugin path. Used when `ghexport-content-type` is `plugin`. |
+| `ghexport-theme` | Theme directory name. Used when `ghexport-content-type` is `theme`. |
+| `ghexport-path` | A path relative to `ghexport-playground-root`. Can be repeated for `custom-paths`. |
+| `ghexport-commit-message` | The commit message to use when exporting. |
+| `ghexport-allow-include-zip` | Whether to offer a "include zip" option (`yes` or `no`). Defaults to `yes`. |
+
+## Next steps
+
+When URL parameters are not enough, step up to the Blueprints API for JSON-based configuration, or the JavaScript API for full programmatic control.
+
+<CardGroup cols={2}>
+  <Card title="Blueprints API" icon="file-code" href="/blueprints/overview">
+    Install plugins, run PHP, and define complex site states in a JSON file.
+  </Card>
+  <Card title="JavaScript API" icon="brackets-curly" href="/developers/javascript-api">
+    Embed Playground in your app and control it in real time with TypeScript.
+  </Card>
+</CardGroup>

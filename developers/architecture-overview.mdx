@@ -1,0 +1,121 @@
+---
+title: "WordPress Playground architecture overview guide"
+description: "A guide to the two-layer architecture of WordPress Playground, its key packages, and how the client-remote communication model works."
+---
+
+WordPress Playground is structured around two major layers: the **PHP-WASM layer**, which compiles PHP to WebAssembly and exposes a JavaScript API, and the **Playground layer**, which provides WordPress-specific tooling, client libraries, and the web application. These layers are maintained together in a single NX monorepo that uses npm workspaces for package management.
+
+## The two major layers
+
+### PHP-WASM layer
+
+The PHP-WASM layer (`packages/php-wasm/*`) handles everything related to running PHP as WebAssembly. It includes the Emscripten-compiled PHP runtime, the virtual filesystem, and the abstract interface that both the browser and Node.js builds share.
+
+### Playground layer
+
+The Playground layer (`packages/playground/*`) builds on top of the PHP-WASM layer to provide a full WordPress environment. It contains the JavaScript client API, the iframe-hosted remote application, the Blueprint execution engine, and the main web application.
+
+## Key packages
+
+<CardGroup cols={2}>
+  <Card title="@wp-playground/client" icon="code">
+    The JavaScript API for embedding Playground in an iframe. Parent windows use this package to communicate with the running WordPress instance.
+  </Card>
+  <Card title="@wp-playground/remote" icon="window">
+    The HTML application that runs inside the iframe. It starts the PHP Worker Thread, registers the Service Worker, and renders WordPress responses.
+  </Card>
+  <Card title="@php-wasm/web" icon="globe">
+    The browser-based PHP runtime. Built on Emscripten WASM, it provides Web Worker support, Service Worker routing, and the browser-specific PHP class.
+  </Card>
+  <Card title="@php-wasm/node" icon="server">
+    The Node.js-based PHP runtime. Provides the same high-level API as the web build but targets the Node.js environment, enabling local CLI and server-side use.
+  </Card>
+  <Card title="@php-wasm/universal" icon="layers">
+    The abstract interface shared by the web and Node.js PHP implementations. Defines `UniversalPHP`, `PHPRequest`, `PHPOutput`, and the `PHPRequestHandler` class.
+  </Card>
+  <Card title="@wp-playground/blueprints" icon="file-json">
+    The Blueprint execution engine. Parses and runs declarative JSON Blueprint configurations that define WordPress site states (installing plugins, logging in, running PHP, etc.).
+  </Card>
+</CardGroup>
+
+## Client-remote communication model
+
+Playground uses an iframe-based isolation model. The parent window loads `@wp-playground/client`, which communicates with `@wp-playground/remote` running inside an `<iframe>` via the `postMessage` API. The [Comlink](https://github.com/GoogleChromeLabs/comlink) library wraps `postMessage` to create a two-way request/response channel, so callers can `await` operations as if they were regular async function calls.
+
+```
+@wp-playground/client     (parent window)
+        |
+        |  postMessage API (Comlink)
+        ↓
+@wp-playground/remote     (iframe content, runs PHP)
+        |
+        ↓
+@php-wasm/web             (PHP runtime — Web Worker)
+        |
+        ↓
+@php-wasm/universal       (abstract interface)
+```
+
+A minimal boot sequence looks like this:
+
+```typescript
+import { startPlaygroundWeb } from '@wp-playground/client';
+
+const client = await startPlaygroundWeb({
+  iframe: document.getElementById('wp') as HTMLIFrameElement,
+  remoteUrl: 'https://playground.wordpress.net/remote.html',
+  blueprint: {
+    preferredVersions: { php: '8.3', wp: 'latest' },
+    steps: [{ step: 'login' }],
+  },
+});
+
+const response = await client.run({
+  code: `<?php echo home_url();`,
+});
+console.log(response.text);
+```
+
+<Note>
+Because `@wp-playground/remote` runs in an isolated iframe, untrusted code executing inside the Playground cannot access the parent window's JavaScript context or DOM.
+</Note>
+
+## Monorepo structure
+
+The repository is an NX monorepo with npm workspaces. NX handles task orchestration, caching, and the complex dependency graph between packages. All packages follow a consistent layout:
+
+```
+packages/[layer]/[package-name]/
+├── src/
+│   ├── index.ts          # Main entry point
+│   └── lib/              # Implementation files
+├── package.json          # npm metadata
+├── project.json          # NX build configuration
+├── tsconfig.json         # TypeScript config
+└── README.md
+```
+
+Package naming follows two conventions:
+
+- `@php-wasm/<name>` — PHP runtime and utilities
+- `@wp-playground/<name>` — WordPress Playground features and tools
+
+### NX: building packages
+
+WordPress Playground uses [NX](https://nx.dev/) because the dependencies between its packages are too complex for a single bundler. NX handles incremental builds, dependency-aware task scheduling, and the build cache.
+
+```bash
+npm run build               # Build all packages
+npx nx build @php-wasm/web  # Build a specific package
+npx nx test playground-blueprints  # Test a specific package
+```
+
+### Lerna: publishing packages
+
+[Lerna](https://lerna.js.org) manages version bumping and publishing across all JavaScript/TypeScript packages. All published packages share the same version number — when one package changes, Lerna increments the version of every dependent package and publishes them together to npm.
+
+```bash
+npm run release  # Bump versions, tag, and publish all modified packages
+```
+
+All packages publish in both ESM (`.js`) and CommonJS (`.cjs`) formats.

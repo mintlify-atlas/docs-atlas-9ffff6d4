@@ -1,0 +1,221 @@
+---
+title: "WordPress Playground guide for WordPress plugin developers"
+description: "Build, test, and demo WordPress plugins locally with zero setup using the Playground CLI, Blueprints, and GitHub Actions PR previews."
+---
+
+WordPress Playground lets you spin up a fully functional WordPress environment around your plugin in seconds — no Docker, no database configuration, and no manual install required. Whether you want to iterate locally, share a live demo, or give PR reviewers a one-click preview, Playground fits into your existing workflow without adding friction.
+
+## Local development workflow
+
+<Steps>
+  <Step title="Clone your plugin and start a server">
+    Navigate to your plugin's root directory and launch a local WordPress instance using `--auto-mount`. Playground auto-detects that the directory is a plugin, mounts it into `wp-content/plugins/`, and activates it automatically.
+
+    ```bash
+    git clone git@github.com:wptrainingteam/devblog-dataviews-plugin.git
+    cd devblog-dataviews-plugin
+    npx @wp-playground/cli server --auto-mount
+    ```
+
+    Playground opens at `http://localhost:9400` with your plugin already active. Changes to local files are reflected immediately because the directory is mounted directly.
+  </Step>
+
+  <Step title="Mount a specific path manually">
+    If auto-detection doesn't fit your project layout, use `--mount` to map a host path to any location inside the virtual filesystem.
+
+    ```bash
+    npx @wp-playground/cli server \
+      --mount ./my-plugin:/wordpress/wp-content/plugins/my-plugin \
+      --login
+    ```
+
+    The `--login` flag logs you in as the admin user automatically on first load.
+  </Step>
+
+  <Step title="Set up a test environment with a Blueprint">
+    A Blueprint lets you declaratively configure the WordPress instance that loads alongside your plugin — install dependencies, set site options, import content, and land on the right admin page.
+
+    Create a `blueprint.json` in your project root:
+
+    ```json
+    {
+      "landingPage": "/wp-admin/admin.php?page=my-plugin-settings",
+      "login": true,
+      "plugins": ["woocommerce"],
+      "steps": [
+        {
+          "step": "setSiteOptions",
+          "options": {
+            "blogname": "My Plugin Dev Site",
+            "permalink_structure": "/%postname%/"
+          }
+        },
+        {
+          "step": "activatePlugin",
+          "pluginPath": "my-plugin/my-plugin.php"
+        }
+      ]
+    }
+    ```
+
+    Then pass it to the CLI:
+
+    ```bash
+    npx @wp-playground/cli server --auto-mount --blueprint=blueprint.json
+    ```
+
+    <Tip>
+      Use the [Blueprints builder](https://playground.wordpress.net/builder/builder.html) to prototype and run Blueprint configs interactively before saving them to a file.
+    </Tip>
+  </Step>
+
+  <Step title="Create a shareable demo link">
+    To share a live demo of your plugin, encode your Blueprint as a URL. Any plugin available on the WordPress Plugin Directory can be installed via the `installPlugin` step:
+
+    ```json
+    {
+      "landingPage": "/wp-admin/plugins.php",
+      "login": true,
+      "steps": [
+        {
+          "step": "installPlugin",
+          "pluginData": {
+            "resource": "wordpress.org/plugins",
+            "slug": "gutenberg"
+          }
+        }
+      ]
+    }
+    ```
+
+    To demo a plugin hosted on GitHub, use the `git:directory` resource:
+
+    ```json
+    {
+      "landingPage": "/wp-admin/admin.php?page=add-media-from-third-party-service",
+      "login": true,
+      "steps": [
+        {
+          "step": "installPlugin",
+          "pluginData": {
+            "resource": "git:directory",
+            "url": "https://github.com/wptrainingteam/devblog-dataviews-plugin",
+            "ref": "HEAD",
+            "refType": "refname"
+          }
+        }
+      ]
+    }
+    ```
+
+    Paste the JSON into the [Blueprints builder](https://playground.wordpress.net/builder/builder.html) to get a shareable URL you can send to anyone — no account or install needed.
+  </Step>
+
+  <Step title="Add PR preview buttons with GitHub Actions">
+    If your plugin lives on GitHub, the `action-wp-playground-pr-preview` action automatically adds a Playground preview button to every pull request. Reviewers can test the exact code from the PR branch without cloning anything.
+
+    Create `.github/workflows/pr-preview.yml`:
+
+    ```yaml
+    name: PR Preview
+    on:
+      pull_request:
+        types: [opened, synchronize, reopened, edited]
+
+    jobs:
+      preview:
+        runs-on: ubuntu-latest
+        permissions:
+          contents: read
+          pull-requests: write
+        steps:
+          - name: Post Playground Preview Button
+            uses: WordPress/action-wp-playground-pr-preview@v2
+            with:
+              github-token: ${{ secrets.GITHUB_TOKEN }}
+              mode: 'append-to-description'
+              plugin-path: .
+    ```
+
+    <Note>
+      Reference the action as a **step** inside `jobs.<job_id>.steps:`, not at the job level. Using `jobs.<job_id>.uses:` is valid YAML for reusable workflows but will not work with this action.
+    </Note>
+  </Step>
+</Steps>
+
+## Installing plugins from other sources
+
+<CodeGroup>
+
+```json From the Plugin Directory
+{
+  "landingPage": "/wp-admin/plugins.php",
+  "login": true,
+  "steps": [
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "wordpress.org/plugins",
+        "slug": "gutenberg"
+      }
+    }
+  ]
+}
+```
+
+```json From a GitHub repository
+{
+  "landingPage": "/wp-admin/admin.php?page=add-media-from-third-party-service",
+  "login": true,
+  "steps": [
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "git:directory",
+        "url": "https://github.com/wptrainingteam/devblog-dataviews-plugin",
+        "ref": "HEAD",
+        "refType": "refname"
+      }
+    }
+  ]
+}
+```
+
+```json From a raw PHP file
+{
+  "landingPage": "/wp-admin/plugins.php",
+  "login": true,
+  "steps": [
+    {
+      "step": "writeFile",
+      "path": "/wordpress/wp-content/plugins/cpt-books.php",
+      "data": {
+        "resource": "url",
+        "url": "https://raw.githubusercontent.com/WordPress/blueprints/trunk/blueprints/custom-post/books.php"
+      }
+    },
+    {
+      "step": "activatePlugin",
+      "pluginPath": "cpt-books.php"
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+## Multiple plugins and a custom landing page
+
+Use the `plugins` shorthand to install your plugin alongside its dependencies in one go, and `landingPage` to land on the right admin screen immediately:
+
+```json
+{
+  "landingPage": "/wp-admin/admin.php?page=my-custom-gutenberg-app",
+  "login": true,
+  "plugins": ["gutenberg", "sql-buddy", "create-block-theme"]
+}
+```
+
+<Tip>
+  Check the [Blueprints Gallery](https://github.com/WordPress/blueprints/blob/trunk/GALLERY.md) for real-world examples of plugin demos, including ones with demo content, custom post types, and block patterns.
+</Tip>

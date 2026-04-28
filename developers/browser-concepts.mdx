@@ -1,0 +1,164 @@
+---
+title: "Browser execution model for WordPress Playground"
+description: "How WordPress Playground uses iframes, Web Workers, Service Workers, scopes, and Comlink to run PHP safely and efficiently inside a browser tab."
+---
+
+Running a PHP server inside a browser tab requires solving several problems at once: keeping the UI responsive while PHP executes, intercepting HTTP requests before they leave the browser, isolating multiple Playground instances from each other, and communicating across JavaScript process boundaries. WordPress Playground addresses each of these with a layered architecture built on standard browser APIs.
+
+## High-level boot sequence
+
+When a user opens Playground, the following sequence takes place:
+
+<Steps>
+  <Step title="Load index.html">
+    The main `index.html` (or the host page embedding `@wp-playground/remote`) starts the application. This page is the top-level orchestrator — closing or reloading it destroys the entire environment.
+  </Step>
+  <Step title="Spawn the PHP Worker Thread">
+    `index.html` spawns a Web Worker (`worker-thread.js`). PHP loads and initialises inside that worker, and WordPress is written into the virtual filesystem.
+  </Step>
+  <Step title="Register the Service Worker">
+    The main page registers a Service Worker (`sw.js`) scoped to the current origin. From this point on, all same-origin HTTP requests are intercepted by the Service Worker.
+  </Step>
+  <Step title="Load the WordPress iframe">
+    `remote.html` creates an `<iframe src="/index.php">`. The Service Worker intercepts the request, forwards it to the PHP Worker Thread, and returns the rendered WordPress response.
+  </Step>
+</Steps>
+
+## Browser tab orchestrates execution
+
+The main `index.html` ties the entire application together. It is the only long-lived page — all other components (Worker Thread, Service Worker) are spawned from it. Some workers may keep running after the tab closes, but the PHP runtime and WordPress state are lost when the tab is navigated away.
+
+## Iframe-based rendering
+
+All PHP responses are rendered inside an `<iframe>` rather than directly in the parent page. This is essential: if WordPress were rendered in a `<div>` in the main page, clicking any link would navigate the top-level page away, destroying the Worker Thread, Service Worker, and the entire application state.
+
+With an iframe, user navigation stays inside the frame. The top-level `index.html` — and everything it manages — remains untouched.
+
+```html
+<!-- The PHP app lives entirely inside this iframe -->
+<iframe id="my-app"></iframe>
+```
+
+<Warning>
+Links with `target="_top"` are not yet handled and will reload the parent page. JavaScript popups originating inside the iframe may also not always display correctly.
+</Warning>
+
+## PHP Worker Threads
+
+PHP runs inside a [Web Worker](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API) so that PHP execution never blocks the browser's main thread and the UI stays responsive.
+
+```typescript
+import { consumeAPI, spawnPHPWorkerThread } from '@php-wasm/web';
+
+const phpClient = consumeAPI<PHPClient>(
+  spawnPHPWorkerThread('/worker-thread.js')
+);
+
+await phpClient.isReady();
+await phpClient.run({ code: `<?php echo "Hello from the thread!";` });
+```
+
+The main page cannot access variables or call functions inside the worker directly — communication goes exclusively through `postMessage`. The `consumeAPI` helper (built on [Comlink](#cross-process-communication)) abstracts this into a typed async API.
+
+## Service Workers
+
+A [Service Worker](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers) intercepts all HTTP requests that originate inside the WordPress iframe and routes them to the PHP Worker Thread for handling. Without this, clicking a link in WordPress would send a real HTTP request to the network (and get a 404, since there is no server).
+
+### Data flow for every request
+
+```
+iframe navigation / fetch()
+        |
+        ↓
+Service Worker (intercepts the request)
+        |
+        ↓
+PHP Worker Thread (calls PHP.request())
+        |
+        ↓
+Service Worker (receives the PHP response)
+        |
+        ↓
+Browser (renders the response in the iframe)
+```
+
+### Setting up the Service Worker
+
+```javascript
+// app.js — register the service worker from the main page
+import { registerServiceWorker } from '@php-wasm/web';
+
+await registerServiceWorker(
+  phpClient,
+  'default',  // scope identifier
+  '/sw.js',   // path to the service worker script
+  '1'         // version string, used to force reload
+);
+```
+
+```javascript
+// sw.js — the service worker script itself
+import { initializeServiceWorker } from '@php-wasm/web';
+
+// Intercepts all HTTP traffic and forwards it to the Worker Thread
+initializeServiceWorker();
+```
+
+## Scopes
+
+Scopes allow multiple Playground instances to run simultaneously in different browser tabs without interfering with each other.
+
+The Service Worker uses a [`BroadcastChannel`](https://developer.mozilla.org/en-US/docs/Web/API/BroadcastChannel) to communicate with the PHP Worker Thread. Because `BroadcastChannel` messages are delivered to every open tab, a request from one tab could accidentally be handled by the PHP instance in another tab.
+
+Scopes solve this by embedding a unique tab identifier directly in the URL prefix:
+
+| App type | URL example |
+|---|---|
+| Unscoped | `http://localhost:8778/wp-login.php` |
+| Scoped | `http://localhost:8778/scope:96253/wp-login.php` |
+
+The Service Worker reads the `/scope:` prefix from the request URL and attaches it to the corresponding `BroadcastChannel` message. Each Worker Thread only responds to messages that carry its own scope identifier.
+
+```typescript
+import { setURLScope } from '@php-wasm/web';
+
+const absoluteURL = 'http://127.0.0.1';
+const scope = Math.random().toFixed(16);
+const scopedURL = setURLScope(absoluteURL, scope).toString();
+// → "http://127.0.0.1/scope:0.1234567890123456/"
+```
+
+## Cross-process communication
+
+`@php-wasm/web` uses [Comlink](https://github.com/GoogleChromeLabs/comlink) to turn the one-way `postMessage` channel between the main thread and a Web Worker into a two-way, `Promise`-based RPC interface.
+
+Without Comlink, you can only fire-and-forget with `worker.postMessage()`. Comlink wraps the worker so that calling a method returns a `Promise` that resolves when the worker finishes and sends back a response.
+
+<CodeGroup>
+
+```javascript main.js
+import * as Comlink from 'comlink';
+
+const worker = new Worker('worker.js');
+const api = Comlink.wrap(worker);
+
+// Awaitable two-way call — no manual message handling needed
+console.log(await api.counter);  // 0
+await api.inc();
+console.log(await api.counter);  // 1
+```
+
+```javascript worker.js
+import * as Comlink from 'comlink';
+
+const obj = {
+  counter: 0,
+  inc() { this.counter++; },
+};
+
+Comlink.expose(obj);
+```
+
+</CodeGroup>
+
+Playground's `consumeAPI` and `exposeAPI` helpers build on this pattern to expose the full PHP and WordPress API across the Worker Thread boundary.

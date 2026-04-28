@@ -1,0 +1,341 @@
+---
+title: "Run WordPress in Node.js with @php-wasm/node package"
+description: "Use @php-wasm/node to run WebAssembly PHP in Node.js: execute scripts, make HTTP requests, manage the virtual filesystem, and integrate PHP into Node."
+---
+
+`@php-wasm/node` ships the same WebAssembly PHP runtime that powers WordPress Playground in the browser, adapted for Node.js. It is the foundation that `@wp-playground/cli` and other Playground tools build on. Use it directly when you need low-level control over PHP execution: running arbitrary PHP code, making HTTP requests to a virtual WordPress instance, manipulating the virtual filesystem, testing PHP functions in isolation, or embedding PHP in a larger Node.js application.
+
+## Installation
+
+<CodeGroup>
+
+```bash npm
+npm install @php-wasm/node @php-wasm/universal
+```
+
+```bash yarn
+yarn add @php-wasm/node @php-wasm/universal
+```
+
+</CodeGroup>
+
+Both packages are required: `@php-wasm/node` provides the Node.js runtime binary, and `@php-wasm/universal` exports the `PHP` class and shared utilities.
+
+## Creating a PHP instance
+
+Load the runtime and wrap it in the `PHP` class:
+
+```typescript
+import { PHP } from '@php-wasm/universal';
+import { loadNodeRuntime } from '@php-wasm/node';
+
+const php = new PHP(await loadNodeRuntime('8.3'));
+```
+
+Pass any supported PHP version string to `loadNodeRuntime`: `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, or `8.5`.
+
+<Tip>
+  Creating a PHP instance is expensive. Reuse the same instance across multiple
+  operations instead of creating a new one per request.
+</Tip>
+
+## Running PHP code
+
+Use `runStream` to execute an inline PHP snippet and collect its output:
+
+```typescript
+import { PHP } from '@php-wasm/universal';
+import { loadNodeRuntime } from '@php-wasm/node';
+
+const php = new PHP(await loadNodeRuntime('8.3'));
+
+const output = await php.runStream({
+  code: '<?php phpinfo(); ?>',
+});
+
+console.log(await output.stdoutText);
+```
+
+Run a PHP file stored in the virtual filesystem:
+
+```typescript
+const result = await php.runStream({
+  scriptPath: '/app/index.php',
+});
+console.log(await result.stdoutText);
+```
+
+`runStream` returns a `StreamedPHPResponse` with `stdout` (a `ReadableStream<Uint8Array>`) and the `stdoutText` convenience getter that resolves the entire body as a string.
+
+## File system operations
+
+The virtual filesystem is a WebAssembly memory-mapped FS. Node.js host directories can be mounted into it (see the CLI docs), but the PHP instance also provides its own API.
+
+```typescript
+import { PHP } from '@php-wasm/universal';
+import { loadNodeRuntime } from '@php-wasm/node';
+
+const php = new PHP(await loadNodeRuntime('8.3'));
+
+// Create directories
+php.mkdir('/app/data');
+
+// Write files
+await php.writeFile(
+  '/app/config.json',
+  JSON.stringify({ app: 'MyApp', version: '1.0.0', debug: true })
+);
+
+// Write and run a PHP script
+await php.writeFile(
+  '/app/index.php',
+  `<?php
+$config = json_decode(file_get_contents('/app/config.json'), true);
+echo "Application: " . $config['app'] . "\\n";
+echo "Version: " . $config['version'] . "\\n";
+echo "Debug Mode: " . ($config['debug'] ? 'ON' : 'OFF') . "\\n";
+?>`
+);
+
+const result = await php.runStream({ scriptPath: '/app/index.php' });
+console.log(await result.stdoutText);
+```
+
+Read a file back from the virtual filesystem:
+
+```typescript
+const content = await php.readFileAsText('/app/config.json');
+```
+
+Check whether a file exists:
+
+```typescript
+const exists = await php.fileExists('/app/config.json');
+```
+
+## HTTP request simulation
+
+Pass server environment variables to simulate an incoming HTTP request:
+
+```typescript
+import { PHP } from '@php-wasm/universal';
+import { loadNodeRuntime } from '@php-wasm/node';
+
+const php = new PHP(await loadNodeRuntime('8.3'));
+
+await php.mkdir('/www/api');
+await php.writeFile(
+  '/www/api/users.php',
+  `<?php
+header('Content-Type: application/json');
+$method = $_SERVER['REQUEST_METHOD'];
+$input = json_decode(file_get_contents('php://input'), true);
+
+switch ($method) {
+    case 'GET':
+        echo json_encode([
+            'users' => [
+                ['id' => 1, 'name' => 'John Doe'],
+                ['id' => 2, 'name' => 'Jane Smith']
+            ]
+        ]);
+        break;
+    case 'POST':
+        $name = $input['name'] ?? 'Unknown';
+        echo json_encode(['success' => true, 'user' => ['id' => 3, 'name' => $name]]);
+        break;
+    default:
+        http_response_code(405);
+        echo json_encode(['error' => 'Method not allowed']);
+}
+?>`
+);
+
+// Simulate a GET request
+const getResponse = await php.runStream({
+  scriptPath: '/www/api/users.php',
+  env: {
+    REQUEST_METHOD: 'GET',
+    SERVER_NAME: 'localhost',
+    SERVER_PORT: '80',
+  },
+});
+console.log('GET:', await getResponse.stdoutText);
+
+// Simulate a POST request
+const postResponse = await php.runStream({
+  scriptPath: '/www/api/users.php',
+  env: {
+    REQUEST_METHOD: 'POST',
+    SERVER_NAME: 'localhost',
+    SERVER_PORT: '80',
+  },
+  body: JSON.stringify({ name: 'Alice Wonder' }),
+});
+console.log('POST:', await postResponse.stdoutText);
+```
+
+## Error handling
+
+Capture both stdout and stderr from a PHP run:
+
+```typescript
+import { PHP } from '@php-wasm/universal';
+import { loadNodeRuntime } from '@php-wasm/node';
+
+const php = new PHP(await loadNodeRuntime('8.3'));
+
+try {
+  const result = await php.runStream({
+    code: '<?php trigger_error("Test error", E_USER_ERROR); ?>',
+  });
+
+  const stdout = await result.stdoutText;
+  const stderr = await result.stderrText;
+
+  if (stderr) {
+    console.error('PHP produced errors:', stderr);
+  }
+} catch (error: any) {
+  console.error('JavaScript error:', error.message);
+}
+```
+
+## Integration patterns
+
+### Express.js middleware
+
+Embed PHP execution in an Express.js application:
+
+```typescript
+import express from 'express';
+import { PHP } from '@php-wasm/universal';
+import { loadNodeRuntime } from '@php-wasm/node';
+
+const app = express();
+const php = new PHP(await loadNodeRuntime('8.3'));
+
+app.use('/php', async (req, res, next) => {
+  try {
+    const phpScript = req.query.script || 'index.php';
+    const result = await php.runStream({
+      scriptPath: `/www/${phpScript}`,
+      env: {
+        REQUEST_METHOD: req.method,
+        QUERY_STRING: new URLSearchParams(
+          req.query as Record<string, string>
+        ).toString(),
+        REQUEST_URI: req.url,
+      },
+    });
+    res.send(await result.stdoutText);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.listen(3000, () => {
+  console.log('Server with PHP support running on port 3000');
+});
+```
+
+### Automated testing
+
+Use `@php-wasm/node` in Vitest or Jest to test PHP functions:
+
+```typescript
+import { describe, it, expect, beforeAll } from '@jest/globals';
+import { PHP } from '@php-wasm/universal';
+import { loadNodeRuntime } from '@php-wasm/node';
+
+describe('PHP functions', () => {
+  let php: PHP;
+
+  beforeAll(async () => {
+    php = new PHP(await loadNodeRuntime('8.3'));
+  });
+
+  it('calculates sum correctly', async () => {
+    const result = await php.run({
+      code: `<?php
+        function sum($a, $b) { return $a + $b; }
+        echo sum(5, 3);
+      ?>`,
+    });
+    expect(result.text).toBe('8');
+  });
+
+  it('handles JSON operations', async () => {
+    const input = { name: 'Test', value: 42 };
+    const result = await php.run({
+      code: `<?php
+        $input = json_decode('${JSON.stringify(input)}', true);
+        echo json_encode(['doubled' => $input['value'] * 2]);
+      ?>`,
+    });
+    const output = JSON.parse(result.text);
+    expect(output.doubled).toBe(84);
+  });
+});
+```
+
+### Build tool integration
+
+Generate documentation or other artifacts by running PHP inside a Node.js build script:
+
+```typescript
+import { PHP } from '@php-wasm/universal';
+import { loadNodeRuntime } from '@php-wasm/node';
+import fs from 'fs/promises';
+
+async function generateDocumentation() {
+  const php = new PHP(await loadNodeRuntime('8.3'));
+
+  php.mkdir('/output');
+
+  const result = await php.runStream({
+    code: `<?php
+echo "Generating documentation...\\n";
+$summary = "# Generated Documentation\\n\\n";
+$summary .= "Generated at: " . date('Y-m-d H:i:s') . "\\n\\n";
+file_put_contents('/output/summary.md', $summary);
+echo "Done!\\n";
+?>`,
+  });
+
+  console.log(await result.stdoutText);
+
+  // Copy generated output from VFS to the host filesystem
+  await fs.mkdir('./docs', { recursive: true });
+  const content = await php.readFileAsText('/output/summary.md');
+  await fs.writeFile('./docs/summary.md', content);
+}
+
+generateDocumentation().catch(console.error);
+```
+
+## Browser vs Node.js runtime differences
+
+`@php-wasm/node` and `@php-wasm/web` both implement the same `PHP` class interface from `@php-wasm/universal`, but differ in a few ways:
+
+| Feature | `@php-wasm/node` | `@php-wasm/web` |
+|---|---|---|
+| Filesystem backend | NODEFS (real host FS) + MEMFS | MEMFS (in-memory only) |
+| Network access | Via custom WS proxy | Via browser fetch |
+| Async model | Native async/await | Asyncify or JSPI |
+| Environment | Worker threads or main thread | Browser Worker or main thread |
+| Storage persistence | Host filesystem | IndexedDB (via `@wp-playground/storage`) |
+
+<Note>
+  The Node.js runtime can mount real host directories into the virtual
+  filesystem using NODEFS. This is how the CLI's `--mount` flags work internally.
+  In the browser runtime, all files live in memory (MEMFS) unless persisted to
+  IndexedDB.
+</Note>
+
+## Performance considerations
+
+- **Reuse PHP instances.** Loading the WASM binary and bootstrapping PHP is expensive. Create one instance per long-lived process and reuse it.
+- **Batch file operations.** Group multiple reads and writes rather than running a new PHP process for each.
+- **Stream large output.** `runStream` returns a `ReadableStream` — pipe it rather than buffering the entire response in memory when processing large outputs.
+- **Cache compiled scripts.** PHP's opcode cache (`opcache`) is available in the WASM build and will cache compiled scripts automatically across repeated calls.

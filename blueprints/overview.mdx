@@ -1,0 +1,112 @@
+---
+title: "Blueprints: configure WordPress Playground with JSON"
+description: "Blueprints are JSON configuration files that set up WordPress Playground instances with specific plugins, themes, PHP versions, and content."
+---
+
+Blueprints are JSON files that describe exactly how a WordPress Playground instance should be configured. You declare the PHP version, WordPress version, plugins to install, themes to activate, content to import, and PHP code to run — and Playground executes all of it in the correct order. Because Blueprints are plain JSON, they require no development environment, no JavaScript knowledge, and no build tools.
+
+## Three ways to use Blueprints
+
+**URL fragment** — Paste a JSON Blueprint directly into the URL hash on `playground.wordpress.net`. Playground reads and executes it on load:
+
+```
+https://playground.wordpress.net/#{"preferredVersions":{"php":"8.3","wp":"latest"},"steps":[{"step":"login"}]}
+```
+
+For long Blueprints that break URL parsers, encode them in Base64 first using `btoa()` in JavaScript.
+
+**`?blueprint-url` query parameter** — Host your Blueprint as a public JSON file and reference it by URL. The file must be served with `Access-Control-Allow-Origin: *`. You can also point to a ZIP bundle containing a `blueprint.json` and all referenced files:
+
+```
+https://playground.wordpress.net/?blueprint-url=https://example.com/my-blueprint.json
+```
+
+**JavaScript API** — Pass a Blueprint object directly to `startPlaygroundWeb()` from `@wp-playground/client` when embedding Playground in an iframe:
+
+```html
+<iframe id="wp-playground" style="width: 1200px; height: 800px"></iframe>
+<script type="module">
+  import { startPlaygroundWeb } from 'https://playground.wordpress.net/client/index.js';
+
+  const client = await startPlaygroundWeb({
+    iframe: document.getElementById('wp-playground'),
+    remoteUrl: 'https://playground.wordpress.net/remote.html',
+    blueprint: {
+      landingPage: '/wp-admin/',
+      preferredVersions: { php: '8.3', wp: 'latest' },
+      steps: [
+        { step: 'login', username: 'admin' },
+        {
+          step: 'installPlugin',
+          pluginData: { resource: 'wordpress.org/plugins', slug: 'gutenberg' },
+        },
+      ],
+    },
+  });
+</script>
+```
+
+**CLI `--blueprint` flag** — Pass a local Blueprint file, a local ZIP bundle, or a remote URL to the Playground CLI:
+
+```bash
+npx @wp-playground/cli server --blueprint=./blueprint.json
+```
+
+## A complete Blueprint example
+
+```json
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "landingPage": "/wp-admin/",
+  "preferredVersions": {
+    "php": "8.3",
+    "wp": "latest"
+  },
+  "features": {
+    "networking": true
+  },
+  "steps": [
+    {
+      "step": "login",
+      "username": "admin"
+    },
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "wordpress.org/plugins",
+        "slug": "gutenberg"
+      },
+      "options": {
+        "activate": true
+      }
+    },
+    {
+      "step": "setSiteOptions",
+      "options": {
+        "blogname": "My Playground Site"
+      }
+    }
+  ]
+}
+```
+
+<Tip>
+  Add `"$schema": "https://playground.wordpress.net/blueprint-schema.json"` to the top of your Blueprint to get autocompletion and validation in editors like VS Code. The schema is automatically generated from the TypeScript source and always reflects the latest API.
+</Tip>
+
+## Explore the Blueprint API
+
+<CardGroup cols={2}>
+  <Card title="Data format" icon="file-code" href="/blueprints/data-format">
+    Top-level Blueprint fields: `$schema`, `landingPage`, `preferredVersions`, `features`, and `steps`.
+  </Card>
+  <Card title="Steps reference" icon="list-check" href="/blueprints/steps">
+    All available step types with parameters — install plugins, run PHP, write files, and more.
+  </Card>
+  <Card title="Resource types" icon="link" href="/blueprints/resources">
+    How to reference plugins, themes, and files from WordPress.org, a URL, a Git repo, or inline.
+  </Card>
+  <Card title="Examples" icon="play" href="/blueprints/examples">
+    Ready-to-run Blueprint examples for common tasks and use cases.
+  </Card>
+</CardGroup>

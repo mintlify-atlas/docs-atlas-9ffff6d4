@@ -1,0 +1,80 @@
+---
+title: "WordPress Playground: WordPress in the browser"
+description: "WordPress Playground runs WordPress entirely in your browser via WebAssembly PHP — no server, no install, no setup required. Explore, build, and test instantly."
+---
+
+WordPress Playground is a zero-setup WordPress environment that runs entirely in your browser using WebAssembly. There's no server to provision, no Docker to configure, and no installation process — just instant, isolated WordPress that you can use to build apps, test plugins and themes, create interactive demos, and run local development environments.
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get a running WordPress instance in under 5 minutes with the Playground website or CLI.
+  </Card>
+  <Card title="Blueprints" icon="file-code" href="/blueprints/overview">
+    Configure WordPress declaratively with JSON — install plugins, set options, and pre-populate content.
+  </Card>
+  <Card title="JavaScript API" icon="js" href="/developers/javascript-api">
+    Embed WordPress Playground in your app with the `startPlaygroundWeb` function.
+  </Card>
+  <Card title="CLI Tool" icon="terminal" href="/local-development/cli">
+    Run `npx @wp-playground/cli server` to spin up a local WordPress environment instantly.
+  </Card>
+</CardGroup>
+
+## What you can do with WordPress Playground
+
+WordPress Playground is designed as a programmable platform. Whether you're building tools for the WordPress ecosystem, creating interactive demos, or running local development without Docker, Playground gives you a full WordPress environment you control entirely through code.
+
+<CardGroup cols={3}>
+  <Card title="Build apps" icon="code" href="/developers/javascript-api">
+    Embed Playground in your website or app via an iframe and control it with the JavaScript API.
+  </Card>
+  <Card title="Test plugins & themes" icon="flask" href="/guides/plugin-developers">
+    Instantly preview any WordPress.org plugin or theme without affecting a live site.
+  </Card>
+  <Card title="Local development" icon="laptop-code" href="/local-development/cli">
+    Use the CLI or VS Code extension to run WordPress locally — no Docker required.
+  </Card>
+  <Card title="E2E testing" icon="vial-circle-check" href="/guides/e2e-testing">
+    Run automated end-to-end tests against a real WordPress instance in Node.js.
+  </Card>
+  <Card title="Shareable demos" icon="share-nodes" href="/blueprints/overview">
+    Create pre-configured WordPress environments and share them as a URL.
+  </Card>
+  <Card title="Multiple PHP versions" icon="php" href="/web-instance">
+    Switch between PHP 7.4–8.5 and WordPress versions with a single flag or Blueprint option.
+  </Card>
+</CardGroup>
+
+## How it works
+
+WordPress Playground compiles PHP to WebAssembly using Emscripten, then runs the full WordPress stack — PHP, SQLite, and all — entirely client-side. The browser-based version uses an iframe-based isolation model where `@wp-playground/client` (parent window) communicates with `@wp-playground/remote` (inside the iframe) over a `postMessage` API.
+
+<CardGroup cols={2}>
+  <Card title="Architecture overview" icon="sitemap" href="/developers/architecture-overview">
+    Learn how PHP runs in the browser and how the iframe communication model works.
+  </Card>
+  <Card title="WebAssembly PHP" icon="microchip" href="/developers/wasm-php">
+    Understand how PHP is compiled to WASM and what that means for your code.
+  </Card>
+</CardGroup>
+
+## Get started
+
+<Steps>
+  <Step title="Try the live demo">
+    Open [playground.wordpress.net](https://playground.wordpress.net) in your browser for an instant WordPress environment. No account required.
+  </Step>
+  <Step title="Install a plugin or theme">
+    Use a Blueprint URL to open Playground with any WordPress.org plugin or theme pre-installed. See [Blueprints](/blueprints/overview) to learn how.
+  </Step>
+  <Step title="Set up local development">
+    Run `npx @wp-playground/cli server --auto-mount` in your plugin or theme directory to start a local development server instantly.
+  </Step>
+  <Step title="Embed in your app">
+    Install `@wp-playground/client` and call `startPlaygroundWeb()` to embed a full WordPress instance in your web application.
+  </Step>
+</Steps>
+
+<Note>
+  WordPress Playground is experimental software. The API is subject to change without notice. A stable API release is a future milestone as the codebase matures.
+</Note>

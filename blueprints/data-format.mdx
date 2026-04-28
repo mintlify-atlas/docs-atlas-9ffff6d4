@@ -1,0 +1,192 @@
+---
+title: "Blueprint JSON data format, top-level fields, and schema"
+description: "Reference for every top-level Blueprint field: $schema, landingPage, preferredVersions, features, extraLibraries, steps, and the meta object."
+---
+
+A Blueprint is a JSON object that describes the desired state of a WordPress Playground instance. When Playground receives a Blueprint it resolves all resource references, then executes each step in order. This page documents every top-level field you can set on a Blueprint.
+
+## JSON schema
+
+Playground publishes a machine-readable JSON schema at `https://playground.wordpress.net/blueprint-schema.json`. Adding `$schema` to your Blueprint enables autocompletion and real-time validation in VS Code, JetBrains IDEs, and any other editor that supports JSON Schema:
+
+```json
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json"
+}
+```
+
+<Tip>
+  The schema is generated automatically from TypeScript source types. It always reflects the current Blueprint API.
+</Tip>
+
+## Top-level fields
+
+<ParamField body="$schema" type="string">
+  URL of the Blueprint JSON schema. Set to `https://playground.wordpress.net/blueprint-schema.json` to enable editor autocompletion and validation. Optional but strongly recommended.
+</ParamField>
+
+<ParamField body="landingPage" type="string">
+  The relative URL Playground navigates to after all steps finish. Useful for opening a specific admin screen, a post editor, or a front-end page. Must be a relative path.
+
+  ```json
+  { "landingPage": "/wp-admin/site-editor.php" }
+  ```
+</ParamField>
+
+<ParamField body="preferredVersions" type="object">
+  Declares preferred PHP and WordPress versions. Playground loads the requested versions when they are available.
+
+  <ParamField body="php" type="string">
+    PHP version to load. Accepts `7.4`, `8.0`, `8.1`, `8.2`, `8.3`, `8.4`, `8.5`, or `latest`. Minor versions such as `8.3.1` are not supported.
+  </ParamField>
+
+  <ParamField body="wp" type="string">
+    WordPress version to load. Accepts the last six major releases (e.g. `6.3` through `6.8`), plus the generic strings `latest`, `nightly`, and `beta`. You can also pass a direct download URL to load an older version not bundled with Playground.
+  </ParamField>
+
+  ```json
+  {
+    "preferredVersions": {
+      "php": "8.3",
+      "wp": "latest"
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField body="features" type="object">
+  Toggles optional Playground capabilities.
+
+  <ParamField body="networking" type="boolean" default="true">
+    Enables outbound HTTP networking via `fetch()`. WordPress functions like `wp_safe_remote_get()` work only when networking is enabled. Set to `false` to run fully offline. You need networking enabled if you want users to install plugins or themes from WordPress.org.
+  </ParamField>
+
+  ```json
+  {
+    "features": {
+      "networking": true
+    }
+  }
+  ```
+</ParamField>
+
+<ParamField body="extraLibraries" type="string[]">
+  Preloads additional libraries into the Playground instance before steps run.
+
+  Supported values:
+  - `"wp-cli"` — installs WP-CLI so `wp-cli` steps can run. WP-CLI is also installed automatically when the Blueprint contains any `wp-cli` steps.
+
+  ```json
+  { "extraLibraries": ["wp-cli"] }
+  ```
+</ParamField>
+
+<ParamField body="steps" type="StepDefinition[]">
+  An ordered list of steps to execute. Steps run sequentially. Each step object must contain a `step` property that names the step type. See the [steps reference](/blueprints/steps) for all available step types and their parameters.
+
+  ```json
+  {
+    "steps": [
+      { "step": "login", "username": "admin" },
+      {
+        "step": "installPlugin",
+        "pluginData": { "resource": "wordpress.org/plugins", "slug": "coblocks" }
+      }
+    ]
+  }
+  ```
+</ParamField>
+
+<ParamField body="meta" type="object">
+  Optional descriptive metadata used by galleries and tools like WordPress Studio. Has no effect on Blueprint execution.
+
+  <ParamField body="title" type="string">Human-readable name for the Blueprint.</ParamField>
+  <ParamField body="description" type="string">Brief summary of what the Blueprint sets up.</ParamField>
+  <ParamField body="author" type="string">Name or handle of the Blueprint creator.</ParamField>
+  <ParamField body="categories" type="string[]">Tags for filtering and grouping in galleries.</ParamField>
+
+  ```json
+  {
+    "meta": {
+      "title": "Gutenberg demo",
+      "description": "A Playground with the latest Gutenberg plugin installed.",
+      "author": "Playground Team",
+      "categories": ["blocks", "editor"]
+    }
+  }
+  ```
+</ParamField>
+
+## Shorthand fields
+
+Several common step patterns have shorthand equivalents that can be declared at the top level instead of inside `steps`. Shorthand steps are inserted at the beginning of the steps array in arbitrary order, so use explicit `steps` entries when execution order matters.
+
+<ParamField body="login" type="boolean | string">
+  Shorthand for the `login` step. Set to `true` to log in as `admin`, or pass a username string.
+
+  ```json
+  { "login": true }
+  ```
+</ParamField>
+
+<ParamField body="plugins" type="string[]">
+  Shorthand for one or more `installPlugin` steps. Each entry is either a WordPress.org plugin slug or a direct ZIP URL.
+
+  ```json
+  { "plugins": ["hello-dolly", "https://example.com/my-plugin.zip"] }
+  ```
+</ParamField>
+
+<ParamField body="siteOptions" type="object">
+  Shorthand for a `setSiteOptions` step. Each key-value pair is passed to WordPress's `update_option()`.
+
+  ```json
+  { "siteOptions": { "blogname": "My Playground" } }
+  ```
+</ParamField>
+
+## V1 and V2 runners
+
+Playground currently supports two Blueprint execution engines:
+
+- **V1 (default)** — A TypeScript runner that resolves resources and executes steps sequentially. All documented fields in this reference apply to V1.
+- **V2 (experimental)** — A PHP-based runner under active development. It shares the same JSON format as V1, so Blueprints are forward-compatible.
+
+If no runner is specified, V1 is used. You do not need to specify a runner in your Blueprint.
+
+## Complete example
+
+```json
+{
+  "$schema": "https://playground.wordpress.net/blueprint-schema.json",
+  "meta": {
+    "title": "CoBlocks + Pendant demo",
+    "author": "Playground Team"
+  },
+  "landingPage": "/wp-admin/",
+  "preferredVersions": {
+    "php": "8.3",
+    "wp": "latest"
+  },
+  "features": {
+    "networking": true
+  },
+  "steps": [
+    { "step": "login", "username": "admin" },
+    {
+      "step": "installPlugin",
+      "pluginData": { "resource": "wordpress.org/plugins", "slug": "coblocks" },
+      "options": { "activate": true }
+    },
+    {
+      "step": "installTheme",
+      "themeData": { "resource": "wordpress.org/themes", "slug": "pendant" },
+      "options": { "activate": true }
+    },
+    {
+      "step": "setSiteOptions",
+      "options": { "blogname": "CoBlocks demo" }
+    }
+  ]
+}
+```

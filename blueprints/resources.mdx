@@ -1,0 +1,231 @@
+---
+title: "Blueprint resource types: plugins, themes, URLs, and files"
+description: "Reference for all Blueprint resource types: wordpress.org/plugins, wordpress.org/themes, url, git:directory, vfs, literal, bundled, and core."
+---
+
+Resource references tell Blueprint steps where to find the files they need — plugin ZIPs, theme archives, WXR content files, images, and any other asset. Instead of managing `fetch()` calls yourself, you declare a resource object and Playground handles downloading, caching, and error handling for you.
+
+Several steps accept resource arguments: `installPlugin` uses `pluginData`, `installTheme` uses `themeData`, `importWxr` uses `file`, `writeFile` uses `data`, and others. Each of those arguments expects a resource reference object.
+
+## Resource types
+
+<AccordionGroup>
+  <Accordion title="wordpress.org/plugins">
+    Fetches a plugin from the official WordPress.org plugin directory by slug. Optionally pins a specific version.
+
+    <ParamField body="resource" type='"wordpress.org/plugins"' required>
+      The resource type identifier.
+    </ParamField>
+    <ParamField body="slug" type="string" required>
+      The plugin slug as it appears in the WordPress.org URL, e.g. `gutenberg`, `woocommerce`, `akismet`.
+    </ParamField>
+    <ParamField body="version" type="string">
+      A specific plugin version to install, e.g. `"16.1.0"`. Omit to install the latest release.
+    </ParamField>
+
+    ```json
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "wordpress.org/plugins",
+        "slug": "gutenberg"
+      }
+    }
+    ```
+
+    Pin a specific version:
+
+    ```json
+    {
+      "resource": "wordpress.org/plugins",
+      "slug": "woocommerce",
+      "version": "8.5.2"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="wordpress.org/themes">
+    Fetches a theme from the official WordPress.org theme directory by slug.
+
+    <ParamField body="resource" type='"wordpress.org/themes"' required>
+      The resource type identifier.
+    </ParamField>
+    <ParamField body="slug" type="string" required>
+      The theme slug as it appears in the WordPress.org URL, e.g. `twentytwentyfour`, `storefront`, `pendant`.
+    </ParamField>
+    <ParamField body="version" type="string">
+      A specific theme version to install. Omit to install the latest release.
+    </ParamField>
+
+    ```json
+    {
+      "step": "installTheme",
+      "themeData": {
+        "resource": "wordpress.org/themes",
+        "slug": "pendant"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="url">
+    Fetches a file from a remote URL over HTTP or HTTPS. The server must allow cross-origin requests (`Access-Control-Allow-Origin: *`) or the request will be blocked.
+
+    <ParamField body="resource" type='"url"' required>
+      The resource type identifier.
+    </ParamField>
+    <ParamField body="url" type="string" required>
+      The absolute URL of the file to fetch.
+    </ParamField>
+
+    ```json
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "url",
+        "url": "https://your-site.com/your-plugin.zip"
+      }
+    }
+    ```
+
+    <Tip>
+      The [GitHub Proxy](https://playground.wordpress.net/proxy) at `playground.wordpress.net/proxy` generates a ZIP from any GitHub repository or subdirectory and adds the correct CORS headers, making it easy to install plugins and themes directly from GitHub.
+    </Tip>
+  </Accordion>
+
+  <Accordion title="git:directory">
+    Fetches a directory from a Git repository. Useful for installing a plugin or theme that lives in a subdirectory of a monorepo, or when you want to pin to a specific branch, tag, or commit.
+
+    <ParamField body="resource" type='"git:directory"' required>
+      The resource type identifier.
+    </ParamField>
+    <ParamField body="url" type="string" required>
+      The repository URL. Supports `https://` and `git@...` formats. GitHub and GitLab are detected automatically.
+    </ParamField>
+    <ParamField body="ref" type="string">
+      Branch name, tag, or commit SHA. Defaults to `HEAD`. When using a branch or tag name, also set `refType`.
+    </ParamField>
+    <ParamField body="refType" type='"branch" | "tag" | "commit"'>
+      Hint for resolving `ref`. Required when `ref` is a branch or tag name (not needed for `HEAD` or a commit SHA).
+    </ParamField>
+    <ParamField body="path" type="string">
+      Subdirectory inside the repository to use as the plugin or theme root. If omitted the entire repository root is used.
+    </ParamField>
+
+    ```json
+    {
+      "step": "installPlugin",
+      "pluginData": {
+        "resource": "git:directory",
+        "url": "https://github.com/WordPress/block-development-examples",
+        "ref": "HEAD",
+        "path": "plugins/data-basics-59c8f8"
+      },
+      "options": {
+        "activate": true,
+        "targetFolderName": "data-basics"
+      }
+    }
+    ```
+
+    <Note>
+      The generated folder name is derived from the repository URL by default, which can be very long. Use `options.targetFolderName` in the `installPlugin` or `installTheme` step to set a readable name.
+    </Note>
+  </Accordion>
+
+  <Accordion title="vfs">
+    References a file that already exists in the Playground virtual filesystem. The path must be absolute.
+
+    <ParamField body="resource" type='"vfs"' required>
+      The resource type identifier.
+    </ParamField>
+    <ParamField body="path" type="string" required>
+      Absolute path to the file inside the Playground filesystem, e.g. `/tmp/my-export.wxr`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "importWxr",
+      "file": {
+        "resource": "vfs",
+        "path": "/tmp/my-export.wxr"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="literal">
+    Provides file content inline, directly inside the Blueprint JSON. Useful for small files or configuration snippets that don't warrant a separate upload.
+
+    <ParamField body="resource" type='"literal"' required>
+      The resource type identifier.
+    </ParamField>
+    <ParamField body="name" type="string" required>
+      The filename, including extension, e.g. `setup.sql` or `hello.php`.
+    </ParamField>
+    <ParamField body="contents" type="string | Uint8Array" required>
+      The file content as a plain string or binary data.
+    </ParamField>
+
+    ```json
+    {
+      "step": "runSql",
+      "sql": {
+        "resource": "literal",
+        "name": "seed.sql",
+        "contents": "INSERT INTO wp_options (option_name, option_value, autoload) VALUES ('my_setting', 'enabled', 'yes');"
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="bundled">
+    References a file that is bundled alongside the Blueprint in a ZIP archive or directory. Use this resource type when distributing a self-contained Blueprint bundle that includes its own assets.
+
+    <ParamField body="resource" type='"bundled"' required>
+      The resource type identifier.
+    </ParamField>
+    <ParamField body="path" type="string" required>
+      Path to the file relative to the bundle root, e.g. `/theme.zip` or `/content/sample.wxr`.
+    </ParamField>
+
+    ```json
+    {
+      "step": "installTheme",
+      "themeData": {
+        "resource": "bundled",
+        "path": "/my-theme.zip"
+      }
+    }
+    ```
+
+    A typical bundle ZIP structure:
+
+    ```
+    my-bundle.zip/
+    ├── blueprint.json
+    ├── my-theme.zip
+    ├── my-plugin.zip
+    └── content/
+        └── sample-content.wxr
+    ```
+
+    Load the bundle using the `?blueprint-url` query parameter:
+
+    ```
+    https://playground.wordpress.net/?blueprint-url=https://example.com/my-bundle.zip
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Quick reference
+
+| Resource type | Source | Requires CORS? |
+|---|---|---|
+| `wordpress.org/plugins` | WordPress.org plugin directory | No |
+| `wordpress.org/themes` | WordPress.org theme directory | No |
+| `url` | Any HTTP/HTTPS URL | Yes (`Access-Control-Allow-Origin: *`) |
+| `git:directory` | A directory in a Git repository | Handled by Playground proxy |
+| `vfs` | Playground virtual filesystem | N/A |
+| `literal` | Inline string in the Blueprint JSON | N/A |
+| `bundled` | File inside a Blueprint ZIP bundle | N/A |

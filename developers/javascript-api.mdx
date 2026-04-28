@@ -1,0 +1,360 @@
+---
+title: "Embed WordPress Playground with the JavaScript API"
+description: "Use @wp-playground/client to embed WordPress Playground in any web app and control it programmatically with full filesystem and HTTP access."
+---
+
+The JavaScript API lets you embed WordPress Playground in an `<iframe>` and control every aspect of the running instance from JavaScript. You can install plugins, write files, execute PHP, make HTTP requests to WordPress, and navigate between pages — all from your own application code. The API is provided by the `@wp-playground/client` npm package and works in browsers and Node.js.
+
+<Info>
+  "API" here means a set of JavaScript functions, not a network-based REST API. All communication happens in-process via `postMessage` between your page and the Playground iframe.
+</Info>
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install @wp-playground/client
+    ```
+  </Tab>
+  <Tab title="CDN">
+    ```html
+    <script type="module">
+      import { startPlaygroundWeb } from 'https://playground.wordpress.net/client/index.js';
+    </script>
+    ```
+  </Tab>
+</Tabs>
+
+## Quick start
+
+The minimum setup requires an `<iframe>` element and the URL of `remote.html`:
+
+```html
+<iframe id="wp" style="width: 100%; height: 300px; border: 1px solid #000;"></iframe>
+<script type="module">
+  import { startPlaygroundWeb } from 'https://playground.wordpress.net/client/index.js';
+
+  const client = await startPlaygroundWeb({
+    iframe: document.getElementById('wp'),
+    remoteUrl: 'https://playground.wordpress.net/remote.html',
+  });
+
+  await client.isReady();
+</script>
+```
+
+<Tip>
+  `remote.html` is the Playground API endpoint — it loads WordPress and PHP but renders no browser UI. See [index.html vs remote.html](#indexhtml-vs-remotehtml) for details.
+</Tip>
+
+## `startPlaygroundWeb()` options
+
+`startPlaygroundWeb` accepts a single options object and returns a `Promise<PlaygroundClient>`.
+
+<ParamField body="iframe" type="HTMLIFrameElement" required>
+  The `<iframe>` element that will host the Playground. Playground loads `remote.html` into this element.
+</ParamField>
+
+<ParamField body="remoteUrl" type="string" required>
+  The URL of `remote.html`. Must be `https://playground.wordpress.net/remote.html` when using the hosted service, or the equivalent path on your own server.
+</ParamField>
+
+<ParamField body="blueprint" type="BlueprintV1">
+  A [JSON Blueprint](/blueprints) object to run during initialization. Use this to pre-install plugins or themes, run PHP, and configure WordPress before the user interacts with the page.
+</ParamField>
+
+<ParamField body="progressTracker" type="ProgressTracker">
+  A `ProgressTracker` instance for reporting load progress. Defaults to a new tracker that drives the built-in progress bar.
+</ParamField>
+
+<ParamField body="disableProgressBar" type="boolean" default="false">
+  When `true`, hides the loading progress bar inside the iframe.
+</ParamField>
+
+<ParamField body="onBlueprintStepCompleted" type="OnStepCompleted">
+  Callback invoked after each Blueprint step completes. Useful for showing custom progress UI.
+</ParamField>
+
+<ParamField body="onClientConnected" type="(playground: PlaygroundClient) => void">
+  Callback invoked once the client connects to `remote.html` but before Blueprint steps run. Use this to attach event listeners or queue operations before setup completes.
+</ParamField>
+
+<ParamField body="mounts" type="MountDescriptor[]">
+  An array of OPFS or directory handle mount descriptors to attach during boot. See [Mounting storage](#mounting-storage) below.
+</ParamField>
+
+<ParamField body="shouldInstallWordPress" type="boolean" default="true">
+  When `false`, skips the WordPress installation step. Useful when loading from a pre-existing OPFS mount.
+</ParamField>
+
+<ParamField body="scope" type="string">
+  A string prefix added to the site URL served by `remote.html`. For example, a scope of `my-app` produces URLs like `/scope:my-app/wp-admin/`. Useful when running multiple Playground instances on the same origin.
+</ParamField>
+
+<ParamField body="corsProxy" type="string">
+  A CORS proxy URL for Blueprint steps that fetch remote resources. For example, `https://cors.wordpress.net/proxy.php`. Requests are rewritten to `{corsProxy}?{originalUrl}`.
+</ParamField>
+
+<ParamField body="wordpressInstallMode" type="WordPressInstallMode" default="install-from-existing-files-if-needed">
+  Controls how WordPress is installed. Defaults to installing only if no existing installation is found.
+</ParamField>
+
+<ParamField body="pathAliases" type="PathAlias[]">
+  Map URL prefixes to filesystem paths outside the document root, similar to Nginx's `alias` directive.
+
+  ```typescript
+  pathAliases: [
+    { urlPrefix: '/phpmyadmin', fsPath: '/tools/phpmyadmin' }
+  ]
+  ```
+</ParamField>
+
+<ParamField body="sqliteDriverVersion" type="string">
+  The version of the SQLite driver to use. Defaults to the latest bundled development version.
+</ParamField>
+
+## `PlaygroundClient` methods
+
+`startPlaygroundWeb` resolves with a `PlaygroundClient` instance. This object is the main interface for controlling Playground after boot.
+
+### Running PHP
+
+<ResponseField name="run(options)" type="Promise<PHPOutput>">
+  Execute arbitrary PHP code and return the output.
+
+  ```typescript
+  const result = await client.run({
+    code: `<?php echo 'Hello from PHP!';`,
+  });
+  console.log(result.text); // "Hello from PHP!"
+  ```
+</ResponseField>
+
+<ResponseField name="request(request)" type="Promise<PHPResponse>">
+  Make an HTTP request to the WordPress site running inside the iframe. The request is handled by WordPress's routing layer, not the network.
+
+  ```typescript
+  const response = await client.request({
+    url: '/wp-json/wp/v2/posts',
+    method: 'GET',
+  });
+  console.log(JSON.parse(response.text));
+  ```
+</ResponseField>
+
+### File system
+
+<ResponseField name="readFile(path)" type="Promise<string>">
+  Read the contents of a file as a UTF-8 string.
+
+  ```typescript
+  const content = await client.readFile('/wordpress/wp-config.php');
+  ```
+</ResponseField>
+
+<ResponseField name="writeFile(path, data)" type="Promise<void>">
+  Write a string or `Uint8Array` to a file, creating it if it does not exist.
+
+  ```typescript
+  await client.writeFile(
+    '/wordpress/wp-content/mu-plugins/my-plugin.php',
+    '<?php // My mu-plugin'
+  );
+  ```
+</ResponseField>
+
+<ResponseField name="listFiles(path)" type="Promise<string[]>">
+  Return the names of all files and directories at the given path.
+
+  ```typescript
+  const files = await client.listFiles('/');
+  // ['tmp', 'home', 'dev', 'proc', 'internal', 'wordpress']
+  ```
+</ResponseField>
+
+<ResponseField name="mkdirTree(path)" type="Promise<void>">
+  Create a directory and all necessary parent directories.
+</ResponseField>
+
+<ResponseField name="unlink(path)" type="Promise<void>">
+  Delete a file.
+</ResponseField>
+
+### Navigation
+
+<ResponseField name="getCurrentURL()" type="Promise<string>">
+  Return the current WordPress page URL shown in the iframe.
+</ResponseField>
+
+<ResponseField name="goTo(path)" type="Promise<void>">
+  Navigate the iframe to a WordPress URL path.
+
+  ```typescript
+  await client.goTo('/wp-admin/post-new.php');
+  ```
+</ResponseField>
+
+<ResponseField name="onNavigation(fn)" type="Promise<void>">
+  Register a callback that fires whenever the iframe navigates to a new URL.
+
+  ```typescript
+  await client.onNavigation((url) => {
+    console.log('Navigated to:', url);
+  });
+  ```
+</ResponseField>
+
+### Readiness
+
+<ResponseField name="isReady()" type="Promise<void>">
+  Resolves when WordPress is fully booted and all Blueprint steps have completed. Always `await` this before interacting with WordPress.
+</ResponseField>
+
+### OPFS storage
+
+<ResponseField name="mountOpfs(options, onProgress?)" type="Promise<void>">
+  Mount an OPFS directory into the PHP filesystem after boot.
+</ResponseField>
+
+<ResponseField name="flushOpfs(mountpoint)" type="Promise<void>">
+  Flush pending writes to an OPFS mount.
+</ResponseField>
+
+<ResponseField name="unmountOpfs(mountpoint)" type="Promise<void>">
+  Flush and unmount an OPFS directory.
+</ResponseField>
+
+## Using a Blueprint on startup
+
+Pass a Blueprint object to `startPlaygroundWeb` to configure WordPress during initialization. This is the recommended way to pre-install plugins and themes:
+
+```typescript
+import { startPlaygroundWeb } from '@wp-playground/client';
+
+const client = await startPlaygroundWeb({
+  iframe: document.getElementById('wp'),
+  remoteUrl: 'https://playground.wordpress.net/remote.html',
+  blueprint: {
+    preferredVersions: {
+      wp: '6.5',
+      php: '8.3',
+    },
+    steps: [
+      { step: 'login' },
+      {
+        step: 'installPlugin',
+        pluginData: {
+          resource: 'wordpress.org/plugins',
+          slug: 'gutenberg',
+        },
+      },
+    ],
+  },
+});
+
+await client.isReady();
+```
+
+<Note>
+  Blueprints can only be passed during initialization. To install plugins or run PHP after boot, use Blueprint step functions directly (see below).
+</Note>
+
+## Calling Blueprint step functions directly
+
+Every Blueprint step also ships as a standalone function you can call on an already-booted client:
+
+```typescript
+import {
+  startPlaygroundWeb,
+  login,
+  installPlugin,
+} from 'https://playground.wordpress.net/client/index.js';
+
+const client = await startPlaygroundWeb({
+  iframe: document.getElementById('wp'),
+  remoteUrl: 'https://playground.wordpress.net/remote.html',
+});
+await client.isReady();
+
+await login(client, { username: 'admin', password: 'password' });
+
+await installPlugin(client, {
+  // When using functions (not JSON Blueprints), provide the resolved file directly.
+  pluginData: await fetch('https://example.com/my-plugin.zip'),
+});
+```
+
+## Mounting storage
+
+Use the `mounts` option to attach persistent storage during boot. The example below loads an existing WordPress site from OPFS, or creates a fresh one and saves it there:
+
+```typescript
+import { startPlaygroundWeb } from '@wp-playground/client';
+
+const hasWordPressSiteInOPFS = false; // replace with your own persistence check
+
+const mountDescriptor = {
+  device: {
+    type: 'opfs',
+    path: 'my-unique-prefix/my-site',
+  },
+  mountpoint: '/wordpress',
+  initialSyncDirection: hasWordPressSiteInOPFS ? 'opfs-to-memfs' : 'memfs-to-opfs',
+};
+
+const client = await startPlaygroundWeb({
+  iframe: document.getElementById('wp'),
+  remoteUrl: 'https://playground.wordpress.net/remote.html',
+  shouldInstallWordPress: !hasWordPressSiteInOPFS,
+  mounts: hasWordPressSiteInOPFS ? [mountDescriptor] : [],
+});
+
+if (!hasWordPressSiteInOPFS) {
+  await client.mountOpfs(mountDescriptor);
+}
+
+await client.isReady();
+```
+
+<Warning>
+  Avoid mounting OPFS before WordPress installs — syncing 3,000+ files during boot significantly slows startup. Mount after the initial install, as shown above.
+</Warning>
+
+## Mounting a local directory
+
+In browsers that support `window.showDirectoryPicker`, you can mount a directory from the user's local filesystem. This uses the File System Access API; check [browser compatibility](https://developer.mozilla.org/en-US/docs/Web/API/Window/showDirectoryPicker#browser_compatibility) before using it.
+
+```javascript
+window.showDirectoryPicker().then(function (directoryHandle) {
+  window.parent.postMessage({
+    type: 'mount-directory-handle',
+    directoryHandle,
+    mountpoint: '/wordpress/wp-content/uploads/',
+  });
+});
+```
+
+## `index.html` vs `remote.html`
+
+`playground.wordpress.net` serves two distinct entry points:
+
+| Entry point | Purpose |
+|---|---|
+| `index.html` | The full Playground demo app with browser UI, version selectors, and Query API support. |
+| `remote.html` | The bare API endpoint. Loads WordPress and PHP, exposes the JavaScript API, and renders no UI. |
+
+**Always use `remote.html` as the `remoteUrl`** when embedding with the JavaScript API. `index.html` wraps `remote.html` internally and is not designed to be used as the `remoteUrl` target.
+
+For debugging, both files expose `window.playground`. In `remote.html`, it is a class instance with full browser autocompletion. In `index.html`, it is a proxy without autocompletion.
+
+## Debugging
+
+Both `index.html` and `remote.html` expose the client as `window.playground` for use in DevTools:
+
+```javascript
+// In the browser console while viewing remote.html:
+await playground.listFiles('/wordpress/wp-content/plugins');
+```
+
+When working with `remote.html` directly, `playground` is a class instance and the browser provides autocompletion. When working through `index.html`, `playground` is a Proxy and autocompletion is not available.
